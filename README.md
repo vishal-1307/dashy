@@ -10,6 +10,17 @@ Personal task and project management workspace. Responsive dashboard, keyboard-f
 - Quick capture (`Ctrl+Shift+Space`) with Zod-validated input
 - Undo for delete and archive
 - Settings: theme, app lock, JSON backup export/import, clear-data danger zone
+- Installable PWA: add Dashy to your phone home screen or install it as a desktop app, with offline support for the app shell
+
+## Install
+
+Dashy is a Progressive Web App, so it can be installed like a native app:
+
+- **Desktop (Chrome/Edge)**: open the site, then use the browser's "Install app" option (icon in the address bar, or the ⋮ menu), or use the "Install on this device" button in Settings.
+- **Android (Chrome)**: open the site, tap the ⋮ menu, then "Install app" / "Add to Home screen".
+- **iPhone/iPad (Safari)**: open the site, tap the Share icon, then "Add to Home Screen".
+
+Once installed it runs in its own window/icon and the app shell keeps working offline via a service worker (`public/sw.js`). Icons live in `public/icons/`; regenerate them with `scripts/generate-icons.ps1` if the brand mark changes.
 
 ## Security
 

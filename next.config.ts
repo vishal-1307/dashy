@@ -12,7 +12,9 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'"
+  "frame-ancestors 'none'",
+  "worker-src 'self'",
+  "manifest-src 'self'"
 ].join("; ");
 
 const securityHeaders = [
@@ -33,6 +35,12 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: securityHeaders
+      },
+      {
+        // The service worker file itself must always be revalidated so
+        // installed clients pick up updates instead of running a stale copy.
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, must-revalidate" }]
       }
     ];
   }

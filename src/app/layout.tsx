@@ -1,10 +1,34 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ServiceWorkerRegistration } from "./service-worker-registration";
 
 export const metadata: Metadata = {
   title: "Dashy",
   description: "A personal workspace for focused work, learning, projects, and life.",
-  applicationName: "Dashy"
+  applicationName: "Dashy",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Dashy"
+  },
+  formatDetection: { telephone: false }
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f6f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f0f14" }
+  ]
 };
 
 export default function RootLayout({
@@ -17,6 +41,7 @@ export default function RootLayout({
       <body>
         <a className="sr-only focus:not-sr-only" href="#main-content">Skip to content</a>
         {children}
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

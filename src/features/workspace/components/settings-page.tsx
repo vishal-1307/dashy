@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Lock, Moon, Palette, ShieldCheck, Sun, SunMoon, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Download, Laptop, Lock, Moon, Palette, ShieldCheck, Sun, SunMoon, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useInstallPrompt } from "../hooks/use-install-prompt";
 import { workspaceExportSchema } from "../schema";
 import { clearPasscode, hasPasscode, setPasscode, verifyPasscode } from "../security";
 import { useWorkspaceStore } from "../store";
@@ -23,10 +24,16 @@ export function SettingsPage() {
   const [confirmPin, setConfirmPin] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const install = useInstallPrompt();
 
   useEffect(() => {
     setPinEnabled(hasPasscode());
   }, []);
+
+  const handleInstall = async () => {
+    const accepted = await install.promptInstall();
+    if (accepted) toast.success("Dashy installed");
+  };
 
   const savePasscode = async () => {
     if (pinEnabled) {
@@ -111,6 +118,36 @@ export function SettingsPage() {
 
   return (
     <div className="settings">
+      <section className="settings-card">
+        <div className="settings-card__head">
+          <span className="settings-card__icon"><Laptop /></span>
+          <div>
+            <h2>Install Dashy</h2>
+            <p>
+              {install.installed
+                ? "Dashy is installed on this device and works offline."
+                : "Add Dashy to your home screen or dock for one-tap access, its own window, and offline use."}
+            </p>
+          </div>
+        </div>
+        {install.installed ? (
+          <p className="settings-note settings-note--success"><CheckCircle2 /> Installed</p>
+        ) : install.canPromptInstall ? (
+          <div className="settings-actions">
+            <button className="primary-button" onClick={handleInstall}><Download /> Install on this device</button>
+          </div>
+        ) : install.isIosSafari ? (
+          <p className="settings-note">
+            On iPhone or iPad: tap the Share icon in Safari, then choose &quot;Add to Home Screen&quot;.
+          </p>
+        ) : (
+          <p className="settings-note">
+            Open Dashy in Chrome or Edge, then use the browser&apos;s &quot;Install app&quot; option (often in the
+            address bar or the ⋮ menu) to add it to this device.
+          </p>
+        )}
+      </section>
+
       <section className="settings-card">
         <div className="settings-card__head">
           <span className="settings-card__icon"><Palette /></span>
