@@ -42,8 +42,20 @@ export type WorkspaceItem = {
   progress: number;
   tags: string[];
   linkedProject?: string;
+  /** Status the item had before it was archived, so restore can put it back. */
+  previousStatus?: ItemStatus;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WorkspaceExport = {
+  app: "dashy";
+  version: number;
+  exportedAt: string;
+  theme?: ThemeMode;
+  items: WorkspaceItem[];
+  dashboardOrder?: string[];
+  dashboardVisibleIds?: string[];
 };
 
 export type ModuleDefinition = {

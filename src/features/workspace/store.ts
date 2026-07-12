@@ -3,7 +3,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { seedItems } from "./data";
-import type { ModuleKey, QuickCaptureInput, ThemeMode, WorkspaceItem } from "./types";
+import type { ItemStatus, ModuleKey, QuickCaptureInput, ThemeMode, WorkspaceExport, WorkspaceItem } from "./types";
+
+export const FOCUS_SESSION_SECONDS = 25 * 60;
+
+type DeletedEntry = {
+  item: WorkspaceItem;
+  index: number;
+};
 
 type WorkspaceState = {
   activeModule: ModuleKey;
@@ -16,6 +23,10 @@ type WorkspaceState = {
   theme: ThemeMode;
   dashboardOrder: string[];
   dashboardVisibleIds: string[];
+  /** True once the user has passed the lock screen this session. Not persisted. */
+  unlocked: boolean;
+  timerSeconds: number;
+  timerRunning: boolean;
   setActiveModule: (module: ModuleKey) => void;
   setQuery: (query: string) => void;
   setFocusMode: (value: boolean) => void;
@@ -23,13 +34,20 @@ type WorkspaceState = {
   setCommandOpen: (value: boolean) => void;
   setCaptureOpen: (value: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
+  setUnlocked: (value: boolean) => void;
+  setTimerRunning: (value: boolean) => void;
+  resetTimer: () => void;
+  tickTimer: () => void;
   toggleDashboardItem: (id: string) => void;
   reorderDashboardItem: (activeId: string, overId: string) => void;
   createItem: (input: QuickCaptureInput) => WorkspaceItem;
   updateItem: (id: string, updates: Partial<WorkspaceItem>) => void;
-  deleteItem: (id: string) => void;
+  deleteItem: (id: string) => DeletedEntry | null;
+  restoreDeletedItem: (entry: DeletedEntry) => void;
   archiveItem: (id: string) => void;
   restoreItem: (id: string) => void;
+  importWorkspace: (data: WorkspaceExport) => void;
+  clearWorkspace: () => void;
 };
 
 const uid = () => {
@@ -39,6 +57,8 @@ const uid = () => {
 
   return `item-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
+
+const ongoing = (item: WorkspaceItem) => item.status === "active" || item.status === "planned";
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
@@ -51,13 +71,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       commandOpen: false,
       captureOpen: false,
       theme: "system",
-      dashboardOrder: seedItems
-        .filter((item) => item.status === "active" || item.status === "planned")
-        .map((item) => item.id),
-      dashboardVisibleIds: seedItems
-        .filter((item) => item.status === "active" || item.status === "planned")
-        .slice(0, 4)
-        .map((item) => item.id),
+      dashboardOrder: seedItems.filter(ongoing).map((item) => item.id),
+      dashboardVisibleIds: seedItems.filter(ongoing).slice(0, 4).map((item) => item.id),
+      unlocked: false,
+      timerSeconds: FOCUS_SESSION_SECONDS,
+      timerRunning: false,
       setActiveModule: (module) => set({ activeModule: module }),
       setQuery: (query) => set({ query }),
       setFocusMode: (value) => set({ focusMode: value }),
@@ -65,6 +83,21 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setCommandOpen: (value) => set({ commandOpen: value }),
       setCaptureOpen: (value) => set({ captureOpen: value }),
       setTheme: (theme) => set({ theme }),
+      setUnlocked: (value) => set({ unlocked: value }),
+      setTimerRunning: (value) =>
+        set((state) => ({
+          timerRunning: value,
+          timerSeconds: value && state.timerSeconds === 0 ? FOCUS_SESSION_SECONDS : state.timerSeconds
+        })),
+      resetTimer: () => set({ timerRunning: false, timerSeconds: FOCUS_SESSION_SECONDS }),
+      tickTimer: () =>
+        set((state) => {
+          if (!state.timerRunning) return state;
+          if (state.timerSeconds <= 1) {
+            return { timerSeconds: 0, timerRunning: false };
+          }
+          return { timerSeconds: state.timerSeconds - 1 };
+        }),
       toggleDashboardItem: (id) => {
         const visible = get().dashboardVisibleIds;
         set({
@@ -111,7 +144,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         set({
           items: [item, ...get().items],
-          dashboardOrder: [item.id, ...get().dashboardOrder]
+          dashboardOrder: [item.id, ...get().dashboardOrder],
+          dashboardVisibleIds: [item.id, ...get().dashboardVisibleIds]
         });
         return item;
       },
@@ -121,15 +155,55 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item
           )
         }),
-      deleteItem: (id) => set({ items: get().items.filter((item) => item.id !== id) }),
-      archiveItem: (id) =>
+      deleteItem: (id) => {
+        const items = get().items;
+        const index = items.findIndex((item) => item.id === id);
+        if (index < 0) {
+          return null;
+        }
+        const item = items[index];
+        set({ items: items.filter((entry) => entry.id !== id) });
+        return { item, index };
+      },
+      restoreDeletedItem: ({ item, index }) => {
+        const items = [...get().items];
+        if (items.some((entry) => entry.id === item.id)) {
+          return;
+        }
+        items.splice(Math.min(index, items.length), 0, item);
+        set({ items });
+      },
+      archiveItem: (id) => {
+        const current = get().items.find((item) => item.id === id);
         get().updateItem(id, {
-          status: "archived"
-        }),
-      restoreItem: (id) =>
+          status: "archived",
+          previousStatus: current && current.status !== "archived" ? current.status : undefined
+        });
+      },
+      restoreItem: (id) => {
+        const current = get().items.find((item) => item.id === id);
         get().updateItem(id, {
-          status: "active"
-        })
+          status: (current?.previousStatus ?? "active") as ItemStatus,
+          previousStatus: undefined
+        });
+      },
+      importWorkspace: (data) => {
+        const items = data.items;
+        const ids = new Set(items.map((item) => item.id));
+        const order = (data.dashboardOrder ?? items.filter(ongoing).map((item) => item.id)).filter((id) =>
+          ids.has(id)
+        );
+        const visible = (
+          data.dashboardVisibleIds ?? items.filter(ongoing).slice(0, 4).map((item) => item.id)
+        ).filter((id) => ids.has(id));
+        set({
+          items,
+          dashboardOrder: order,
+          dashboardVisibleIds: visible,
+          ...(data.theme ? { theme: data.theme } : {})
+        });
+      },
+      clearWorkspace: () => set({ items: [], dashboardOrder: [], dashboardVisibleIds: [] })
     }),
     {
       name: "dashy-workspace-v1",

@@ -27,7 +27,6 @@ import {
   ArchiveRestore,
   ArrowRight,
   BarChart3,
-  Bell,
   BookOpen,
   Brain,
   Building2,
@@ -36,8 +35,8 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronLeft,
+  Circle,
   CircleDollarSign,
-  Clock3,
   Command,
   Contact,
   FileText,
@@ -46,6 +45,7 @@ import {
   GripVertical,
   Home,
   Lightbulb,
+  Lock,
   Menu,
   Moon,
   NotebookTabs,
@@ -69,9 +69,13 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { modules, priorityRank } from "../data";
+import { quickCaptureSchema } from "../schema";
+import { hasPasscode } from "../security";
 import { useWorkspaceStore } from "../store";
 import type { ItemStatus, ModuleKey, Priority, WorkspaceItem } from "../types";
 import { cn } from "@/shared/lib/utils";
+import { LockScreen } from "./lock-screen";
+import { SettingsPage } from "./settings-page";
 
 const moduleIcons: Record<ModuleKey, LucideIcon> = {
   dashboard: Home,
@@ -98,6 +102,8 @@ const moduleIcons: Record<ModuleKey, LucideIcon> = {
 const statusOptions: ItemStatus[] = ["idea", "planned", "active", "waiting", "done", "archived"];
 const priorityOptions: Priority[] = ["low", "medium", "high", "urgent"];
 
+const localDateString = (date = new Date()) => date.toLocaleDateString("en-CA");
+
 type CaptureDraft = {
   title: string;
   description: string;
@@ -106,13 +112,22 @@ type CaptureDraft = {
   dueDate: string;
 };
 
+type PaletteAction = {
+  id: string;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  keywords: string;
+  run: () => void;
+};
+
 export function DashyWorkspace({ module }: { module: ModuleKey }) {
   const router = useRouter();
   const store = useWorkspaceStore();
   const [clock, setClock] = useState(new Date());
-  const [timer, setTimer] = useState(25 * 60);
-  const [timerRunning, setTimerRunning] = useState(false);
   const [customizing, setCustomizing] = useState(false);
+  const [lockChecked, setLockChecked] = useState(false);
+  const [pinEnabled, setPinEnabled] = useState(false);
   const [draft, setDraft] = useState<CaptureDraft>({
     title: "",
     description: "",
@@ -122,11 +137,16 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
   });
 
   useEffect(() => {
+    setPinEnabled(hasPasscode());
+    setLockChecked(true);
+  }, []);
+
+  useEffect(() => {
     store.setActiveModule(module);
   }, [module, store.setActiveModule]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setClock(new Date()), 1000);
+    const interval = window.setInterval(() => setClock(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -165,19 +185,15 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
   }, [store.setCaptureOpen, store.setCommandOpen]);
 
   useEffect(() => {
-    if (!timerRunning) return;
+    if (!store.timerRunning) return;
     const interval = window.setInterval(() => {
-      setTimer((value) => {
-        if (value <= 1) {
-          setTimerRunning(false);
-          toast.success("Focus session complete");
-          return 0;
-        }
-        return value - 1;
-      });
+      store.tickTimer();
+      if (useWorkspaceStore.getState().timerSeconds === 0) {
+        toast.success("Focus session complete");
+      }
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [timerRunning]);
+  }, [store.timerRunning, store.tickTimer]);
 
   const activeItems = useMemo(
     () =>
@@ -207,16 +223,108 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
   }).filter((item) => store.dashboardVisibleIds.includes(item.id));
 
   const createFromDraft = () => {
-    if (!draft.title.trim()) {
-      toast.error("Add a title first");
+    const parsed = quickCaptureSchema.safeParse({
+      module: draft.module,
+      title: draft.title,
+      description: draft.description || undefined,
+      priority: draft.priority,
+      dueDate: draft.dueDate || undefined,
+      tags: []
+    });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Check the form and try again");
       return;
     }
-    const item = store.createItem(draft);
+    const item = store.createItem(parsed.data);
     setDraft({ title: "", description: "", module: draft.module, priority: "medium", dueDate: "" });
     store.setCaptureOpen(false);
     toast.success("Added to Dashy");
     router.push(`/${item.module}`);
   };
+
+  const deleteWithUndo = (id: string) => {
+    const removed = store.deleteItem(id);
+    if (!removed) return;
+    toast(`Deleted "${removed.item.title}"`, {
+      action: { label: "Undo", onClick: () => store.restoreDeletedItem(removed) }
+    });
+  };
+
+  const archiveWithUndo = (id: string) => {
+    store.archiveItem(id);
+    toast("Archived", {
+      action: { label: "Undo", onClick: () => store.restoreItem(id) }
+    });
+  };
+
+  const lockWorkspace = () => {
+    if (hasPasscode()) {
+      setPinEnabled(true);
+      store.setUnlocked(false);
+    } else {
+      toast.info("Set a passcode in Settings to lock Dashy");
+      router.push("/settings");
+    }
+  };
+
+  const paletteActions: PaletteAction[] = [
+    {
+      id: "new-item",
+      label: "New item",
+      hint: "Quick capture",
+      icon: Plus,
+      keywords: "new add create task capture",
+      run: () => store.setCaptureOpen(true)
+    },
+    {
+      id: "toggle-timer",
+      label: store.timerRunning ? "Pause focus timer" : "Start focus timer",
+      hint: "25 minute session",
+      icon: store.timerRunning ? Pause : Play,
+      keywords: "timer focus pomodoro start pause",
+      run: () => store.setTimerRunning(!store.timerRunning)
+    },
+    {
+      id: "focus-mode",
+      label: "Enter focus mode",
+      hint: "One task, no dashboard",
+      icon: Target,
+      keywords: "focus mode zen distraction",
+      run: () => store.setFocusMode(true)
+    },
+    {
+      id: "toggle-theme",
+      label: "Switch theme",
+      hint: `Now: ${store.theme}`,
+      icon: store.theme === "dark" ? Sun : Moon,
+      keywords: "theme dark light mode appearance",
+      run: () => store.setTheme(store.theme === "light" ? "dark" : store.theme === "dark" ? "system" : "light")
+    },
+    {
+      id: "lock",
+      label: "Lock workspace",
+      hint: pinEnabled ? "Requires passcode to reopen" : "Set a passcode first",
+      icon: Lock,
+      keywords: "lock security passcode pin",
+      run: lockWorkspace
+    },
+    ...modules.map((entry) => ({
+      id: `go-${entry.key}`,
+      label: `Go to ${entry.label}`,
+      hint: entry.description,
+      icon: moduleIcons[entry.key],
+      keywords: `go open ${entry.label} ${entry.key}`,
+      run: () => router.push(entry.key === "dashboard" ? "/" : `/${entry.key}`)
+    }))
+  ];
+
+  if (!lockChecked) {
+    return null;
+  }
+
+  if (pinEnabled && !store.unlocked) {
+    return <LockScreen onUnlock={() => store.setUnlocked(true)} />;
+  }
 
   if (store.focusMode) {
     const focusItem = activeItems.find((item) => item.status !== "done");
@@ -227,7 +335,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
           <IconButton label="Exit focus" onClick={() => store.setFocusMode(false)}>
             <ChevronLeft />
           </IconButton>
-          <Timer seconds={timer} />
+          <Timer seconds={store.timerSeconds} />
         </div>
         <section className="focus-stage__content">
           <p className="eyebrow">Current focus</p>
@@ -245,9 +353,9 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
           ) : null}
         </section>
         <TimerControls
-          running={timerRunning}
-          onReset={() => { setTimerRunning(false); setTimer(25 * 60); }}
-          onToggle={() => setTimerRunning((value) => !value)}
+          running={store.timerRunning}
+          onReset={store.resetTimer}
+          onToggle={() => store.setTimerRunning(!store.timerRunning)}
         />
       </main>
     );
@@ -258,7 +366,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
       <Toaster richColors position="top-right" />
       <Sidebar module={module} />
       <div className="app-main">
-        <Topbar />
+        <Topbar onLock={lockWorkspace} />
         <div className="page-wrap" id="main-content">
           {module === "dashboard" ? (
             <Dashboard
@@ -271,11 +379,12 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
               onReorder={store.reorderDashboardItem}
               onUpdate={store.updateItem}
               onFocus={() => store.setFocusMode(true)}
-              timer={timer}
-              timerRunning={timerRunning}
-              setTimer={setTimer}
-              setTimerRunning={setTimerRunning}
             />
+          ) : module === "settings" ? (
+            <>
+              <ModuleHeader definition={definition} />
+              <SettingsPage />
+            </>
           ) : (
             <ModulePage
               definition={definition}
@@ -286,8 +395,8 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
                 store.setCaptureOpen(true);
               }}
               onUpdate={store.updateItem}
-              onArchive={store.archiveItem}
-              onDelete={store.deleteItem}
+              onArchive={archiveWithUndo}
+              onDelete={deleteWithUndo}
               onRestore={store.restoreItem}
             />
           )}
@@ -310,6 +419,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
       <CommandPalette
         open={store.commandOpen}
         items={activeItems}
+        actions={paletteActions}
         onClose={() => store.setCommandOpen(false)}
         onSelect={(item) => {
           store.setCommandOpen(false);
@@ -333,7 +443,7 @@ function Sidebar({ module }: { module: ModuleKey }) {
         <div className="brand-row">
           <Link className="brand" href="/" onClick={closeOnMobile}>
             <span className="brand__mark">D</span>
-            {sidebarOpen ? <span><strong>Dashy</strong><small>Personal workspace</small></span> : null}
+            {sidebarOpen ? <strong>Dashy</strong> : null}
           </Link>
           <IconButton label="Toggle sidebar" className="desktop-only" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
@@ -363,7 +473,7 @@ function Sidebar({ module }: { module: ModuleKey }) {
   );
 }
 
-function Topbar() {
+function Topbar({ onLock }: { onLock: () => void }) {
   const store = useWorkspaceStore();
   const nextTheme = store.theme === "light" ? "dark" : store.theme === "dark" ? "system" : "light";
   return (
@@ -371,11 +481,11 @@ function Topbar() {
       <IconButton label="Open sidebar" className="mobile-only" onClick={() => store.setSidebarOpen(true)}><Menu /></IconButton>
       <button className="search-command" onClick={() => store.setCommandOpen(true)}>
         <Search />
-        <span>Search workspace</span>
+        <span>Search or run a command</span>
         <kbd>Ctrl K</kbd>
       </button>
       <div className="topbar__actions">
-        <IconButton label="Notifications"><Bell /></IconButton>
+        <IconButton label="Lock workspace" onClick={onLock}><Lock /></IconButton>
         <IconButton label={`Theme: ${store.theme}`} onClick={() => store.setTheme(nextTheme)}>
           {store.theme === "dark" ? <Moon /> : store.theme === "light" ? <Sun /> : <Settings />}
         </IconButton>
@@ -394,11 +504,7 @@ function Dashboard({
   onCustomize,
   onReorder,
   onUpdate,
-  onFocus,
-  timer,
-  timerRunning,
-  setTimer,
-  setTimerRunning
+  onFocus
 }: {
   clock: Date;
   items: WorkspaceItem[];
@@ -409,18 +515,16 @@ function Dashboard({
   onReorder: (activeId: string, overId: string) => void;
   onUpdate: (id: string, updates: Partial<WorkspaceItem>) => void;
   onFocus: () => void;
-  timer: number;
-  timerRunning: boolean;
-  setTimer: (seconds: number) => void;
-  setTimerRunning: (value: boolean) => void;
 }) {
+  const store = useWorkspaceStore();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const done = items.filter((item) => item.status === "done").length;
   const urgent = items.filter((item) => item.priority === "urgent" && item.status !== "done").length;
-  const average = Math.round(items.reduce((sum, item) => sum + item.progress, 0) / Math.max(items.length, 1));
+  const today = localDateString();
+  const overdue = items.filter((item) => item.dueDate && item.dueDate < today && item.status !== "done").length;
   const date = clock.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   return (
@@ -438,8 +542,8 @@ function Dashboard({
 
       <section className="signal-strip" aria-label="Workspace summary">
         <Signal value={ongoingItems.length} label="Ongoing" note="in motion" />
-        <Signal value={urgent} label="Urgent" note="needs a decision" />
-        <Signal value={`${average}%`} label="Progress" note="workspace average" />
+        <Signal value={urgent} label="Urgent" note="needs a decision" tone={urgent ? "danger" : undefined} />
+        <Signal value={overdue} label="Overdue" note="past due date" tone={overdue ? "danger" : undefined} />
         <Signal value={done} label="Completed" note="all time" />
       </section>
 
@@ -472,24 +576,28 @@ function Dashboard({
 
         <aside className="dashboard-rail">
           <section className="focus-panel">
-            <div><p className="eyebrow">Focus timer</p><Timer seconds={timer} /></div>
+            <div><p className="eyebrow">Focus timer</p><Timer seconds={store.timerSeconds} /></div>
             <p>Protect one block of time for the work at the top of your queue.</p>
             <TimerControls
-              running={timerRunning}
-              onReset={() => { setTimerRunning(false); setTimer(25 * 60); }}
-              onToggle={() => setTimerRunning(!timerRunning)}
+              running={store.timerRunning}
+              onReset={store.resetTimer}
+              onToggle={() => store.setTimerRunning(!store.timerRunning)}
             />
             <button className="text-button" onClick={onFocus}>Enter focus mode <ArrowRight /></button>
           </section>
           <section className="today-panel">
             <div className="section-heading"><div><p className="eyebrow">Next up</p><h2>Due soon</h2></div></div>
-            {items.filter((item) => item.dueDate && item.status !== "done").slice(0, 4).map((item) => (
-              <Link className="due-row" href={`/${item.module}`} key={item.id}>
-                <span>{new Date(`${item.dueDate}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                <strong>{item.title}</strong>
-                <ArrowRight />
-              </Link>
-            ))}
+            {items
+              .filter((item) => item.dueDate && item.status !== "done")
+              .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+              .slice(0, 4)
+              .map((item) => (
+                <Link className={cn("due-row", item.dueDate && item.dueDate < today && "due-row--overdue")} href={`/${item.module}`} key={item.id}>
+                  <span>{new Date(`${item.dueDate}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                  <strong>{item.title}</strong>
+                  <ArrowRight />
+                </Link>
+              ))}
           </section>
         </aside>
       </div>
@@ -541,6 +649,16 @@ function SortableWorkRow({
   );
 }
 
+function ModuleHeader({ definition }: { definition: (typeof modules)[number] }) {
+  const Icon = moduleIcons[definition.key];
+  return (
+    <section className="module-header">
+      <div className="module-header__icon"><Icon /></div>
+      <div><p className="eyebrow">Workspace / {definition.label}</p><h1>{definition.label}</h1><p>{definition.description}</p></div>
+    </section>
+  );
+}
+
 function ModulePage({
   definition,
   items,
@@ -562,6 +680,18 @@ function ModulePage({
 }) {
   const Icon = moduleIcons[definition.key];
   const archivedForModule = archivedItems.filter((item) => item.module === definition.key);
+  const today = localDateString();
+  const groups =
+    definition.key === "tasks"
+      ? [
+          { key: "overdue", label: "Overdue", items: items.filter((item) => item.status !== "done" && item.dueDate && item.dueDate < today) },
+          { key: "today", label: "Today", items: items.filter((item) => item.status !== "done" && item.dueDate === today) },
+          { key: "upcoming", label: "Upcoming", items: items.filter((item) => item.status !== "done" && item.dueDate && item.dueDate > today) },
+          { key: "someday", label: "No date", items: items.filter((item) => item.status !== "done" && !item.dueDate) },
+          { key: "done", label: "Completed", items: items.filter((item) => item.status === "done") }
+        ].filter((group) => group.items.length)
+      : null;
+
   return (
     <>
       <section className="module-header">
@@ -573,11 +703,33 @@ function ModulePage({
         <span>{items.length} active items</span>
         <span>{items.filter((item) => item.status === "done").length} completed</span>
       </section>
-      <section className="item-grid">
-        {items.length ? items.map((item) => (
-          <ItemCard key={item.id} item={item} onUpdate={onUpdate} onArchive={onArchive} onDelete={onDelete} />
-        )) : <EmptyState title={`No ${definition.label.toLowerCase()} yet`} text="Capture the first item and it will stay available on this page." action="Add item" onAction={onCapture} />}
-      </section>
+      {groups ? (
+        groups.length ? (
+          groups.map((group) => (
+            <section className="task-group" key={group.key}>
+              <div className="task-group__head">
+                <h2 className={cn(group.key === "overdue" && "task-group__title--overdue")}>{group.label}</h2>
+                <span>{group.items.length}</span>
+              </div>
+              <div className="item-grid">
+                {group.items.map((item) => (
+                  <ItemCard key={item.id} item={item} onUpdate={onUpdate} onArchive={onArchive} onDelete={onDelete} />
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
+          <section className="item-grid">
+            <EmptyState title="No tasks yet" text="Capture the first task and it will show up grouped by due date." action="Add task" onAction={onCapture} />
+          </section>
+        )
+      ) : (
+        <section className="item-grid">
+          {items.length ? items.map((item) => (
+            <ItemCard key={item.id} item={item} onUpdate={onUpdate} onArchive={onArchive} onDelete={onDelete} />
+          )) : <EmptyState title={`No ${definition.label.toLowerCase()} yet`} text="Capture the first item and it will stay available on this page." action="Add item" onAction={onCapture} />}
+        </section>
+      )}
       {archivedForModule.length ? (
         <section className="archive-section">
           <div className="section-heading"><div><p className="eyebrow">Archive</p><h2>Stored items</h2></div></div>
@@ -596,10 +748,23 @@ function ItemCard({ item, onUpdate, onArchive, onDelete }: {
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const done = item.status === "done";
+  const overdue = !done && item.dueDate && item.dueDate < localDateString();
   return (
-    <article className="item-card">
+    <article className={cn("item-card", done && "item-card--done")}>
       <div className="item-card__head">
-        <span className={cn("priority", `priority--${item.priority}`)}>{item.priority}</span>
+        <div className="item-card__badges">
+          <button
+            className={cn("check-toggle", done && "check-toggle--done")}
+            aria-label={done ? "Mark as not done" : "Mark as done"}
+            title={done ? "Mark as not done" : "Mark as done"}
+            onClick={() => onUpdate(item.id, done ? { status: "active" } : { status: "done", progress: 100 })}
+          >
+            {done ? <CheckCircle2 /> : <Circle />}
+          </button>
+          <span className={cn("priority", `priority--${item.priority}`)}>{item.priority}</span>
+          {overdue ? <span className="overdue-badge">Overdue</span> : null}
+        </div>
         <div><IconButton label="Archive" onClick={() => onArchive(item.id)}><Archive /></IconButton><IconButton label="Delete" onClick={() => onDelete(item.id)}><Trash2 /></IconButton></div>
       </div>
       <input className="title-input" value={item.title} onChange={(event) => onUpdate(item.id, { title: event.target.value })} />
@@ -666,17 +831,33 @@ function CaptureDialog({ open, draft, onChange, onClose, onCreate }: {
   </motion.div> : null}</AnimatePresence>;
 }
 
-function CommandPalette({ open, items, onClose, onSelect }: {
+function CommandPalette({ open, items, actions, onClose, onSelect }: {
   open: boolean;
   items: WorkspaceItem[];
+  actions: PaletteAction[];
   onClose: () => void;
   onSelect: (item: WorkspaceItem) => void;
 }) {
   const { query, setQuery } = useWorkspaceStore();
+  const trimmed = query.trim().toLowerCase();
+  const visibleActions = trimmed
+    ? actions.filter((action) => `${action.label} ${action.keywords}`.toLowerCase().includes(trimmed)).slice(0, 6)
+    : actions.slice(0, 4);
   return <AnimatePresence>{open ? <motion.div className="dialog-wrap dialog-wrap--top" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={onClose}>
     <motion.section className="command-dialog" initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="command-input"><Command /><input autoFocus placeholder="Search projects, tasks, and notes" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>Esc</kbd></div>
-      <div className="command-results">{items.slice(0, 10).map((item) => <button key={item.id} onClick={() => onSelect(item)}><span className="command-icon"><ModuleGlyph module={item.module} /></span><span><strong>{item.title}</strong><small>{item.module} · {item.priority}</small></span><ArrowRight /></button>)}</div>
+      <div className="command-input"><Command /><input autoFocus placeholder="Search items or type a command" value={query} onChange={(event) => setQuery(event.target.value)} /><kbd>Esc</kbd></div>
+      <div className="command-results">
+        {visibleActions.length ? <p className="command-section-label">Commands</p> : null}
+        {visibleActions.map((action) => (
+          <button key={action.id} onClick={() => { onClose(); action.run(); }}>
+            <span className="command-icon command-icon--action"><action.icon /></span>
+            <span><strong>{action.label}</strong><small>{action.hint}</small></span>
+            <ArrowRight />
+          </button>
+        ))}
+        {items.length ? <p className="command-section-label">Items</p> : null}
+        {items.slice(0, 10).map((item) => <button key={item.id} onClick={() => onSelect(item)}><span className="command-icon"><ModuleGlyph module={item.module} /></span><span><strong>{item.title}</strong><small>{item.module} · {item.priority}</small></span><ArrowRight /></button>)}
+      </div>
     </motion.section>
   </motion.div> : null}</AnimatePresence>;
 }
@@ -686,8 +867,8 @@ function ModuleGlyph({ module }: { module: ModuleKey }) {
   return <Icon />;
 }
 
-function Signal({ value, label, note }: { value: string | number; label: string; note: string }) {
-  return <div className="signal"><strong>{value}</strong><span>{label}</span><small>{note}</small></div>;
+function Signal({ value, label, note, tone }: { value: string | number; label: string; note: string; tone?: "danger" }) {
+  return <div className={cn("signal", tone === "danger" && "signal--danger")}><strong>{value}</strong><span>{label}</span><small>{note}</small></div>;
 }
 
 function Timer({ seconds }: { seconds: number }) {
