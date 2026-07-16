@@ -1,4 +1,4 @@
-import type { ModuleDefinition, WorkspaceItem } from "./types";
+import type { ModuleDefinition } from "./types";
 
 export const modules: ModuleDefinition[] = [
   { key: "dashboard", label: "Dashboard", description: "Today, progress, and command center", accent: "bg-sky-500" },
@@ -20,94 +20,6 @@ export const modules: ModuleDefinition[] = [
   { key: "contacts", label: "Contacts", description: "People and interaction history", accent: "bg-neutral-500" },
   { key: "analytics", label: "Analytics", description: "Productivity and progress reports", accent: "bg-stone-500" },
   { key: "settings", label: "Settings", description: "Profile, security, integrations", accent: "bg-zinc-500" }
-];
-
-const now = new Date();
-const date = (offset: number) => {
-  const next = new Date(now);
-  next.setDate(now.getDate() + offset);
-  return next.toISOString().slice(0, 10);
-};
-
-export const seedItems: WorkspaceItem[] = [
-  {
-    id: "project-dashy-launch",
-    module: "projects",
-    title: "Dashy private beta",
-    description: "Ship the first usable version with dashboard, core CRUD, and workspace search.",
-    status: "active",
-    priority: "urgent",
-    dueDate: date(10),
-    progress: 64,
-    tags: ["product", "launch"],
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  },
-  {
-    id: "task-schema-review",
-    module: "tasks",
-    title: "Review relational schema",
-    description: "Validate module relationships before wiring server actions to Prisma.",
-    status: "planned",
-    priority: "high",
-    dueDate: date(1),
-    progress: 20,
-    tags: ["database", "backend"],
-    linkedProject: "Dashy private beta",
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  },
-  {
-    id: "note-pricing",
-    module: "notes",
-    title: "Pricing positioning",
-    description: "Keep the app personal-first, then expand toward team workspaces later.",
-    status: "active",
-    priority: "medium",
-    progress: 45,
-    tags: ["strategy"],
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  },
-  {
-    id: "idea-ai-briefing",
-    module: "ideas",
-    title: "AI daily briefing",
-    description: "Generate a morning plan from overdue tasks, calendar load, and goals.",
-    status: "idea",
-    priority: "high",
-    dueDate: date(7),
-    progress: 10,
-    tags: ["ai", "dashboard"],
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  },
-  {
-    id: "goal-learning",
-    module: "learning",
-    title: "Cybersecurity roadmap",
-    description: "Track modules, lab hours, notes, quizzes, and certificates.",
-    status: "active",
-    priority: "medium",
-    dueDate: date(28),
-    progress: 38,
-    tags: ["study", "security"],
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  },
-  {
-    id: "finance-budget",
-    module: "finance",
-    title: "Monthly operating budget",
-    description: "Categorize subscriptions, invoices, savings, and business expenses.",
-    status: "waiting",
-    priority: "medium",
-    dueDate: date(3),
-    progress: 52,
-    tags: ["money", "reports"],
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
-  }
 ];
 
 export const priorityRank = {

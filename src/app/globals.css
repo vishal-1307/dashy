@@ -582,6 +582,80 @@ kbd {
 .lock-error { color: rgb(var(--danger)); font-size: .74rem; margin: 0; }
 .lock-card .primary-button { margin-top: .6rem; }
 
+/* ---------- Auth (login / signup) ---------- */
+.auth-screen {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 1.5rem;
+}
+.auth-card {
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 1.1rem;
+  max-width: 24rem;
+  padding: 2.2rem 1.9rem;
+  width: 100%;
+}
+.auth-card__head { display: grid; justify-items: center; text-align: center; gap: .5rem; }
+.auth-card__head h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; margin: .5rem 0 0; }
+.auth-card__head p { color: rgb(var(--muted)); font-size: .8rem; margin: 0; }
+.auth-form { display: grid; gap: .85rem; }
+.auth-form label { color: rgb(var(--muted)); display: grid; font-size: .7rem; font-weight: 600; gap: .4rem; }
+.auth-form input {
+  background: rgb(var(--surface-strong));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius);
+  color: rgb(var(--foreground));
+  min-height: 2.6rem;
+  padding: .6rem .75rem;
+}
+.auth-error {
+  background: rgb(var(--danger-soft));
+  border-radius: var(--radius);
+  color: rgb(var(--danger));
+  font-size: .76rem;
+  padding: .6rem .75rem;
+}
+.auth-divider { align-items: center; color: rgb(var(--muted)); display: flex; font-size: .68rem; gap: .8rem; text-transform: uppercase; }
+.auth-divider::before, .auth-divider::after { background: rgb(var(--border)); content: ""; flex: 1; height: 1px; }
+.auth-google {
+  align-items: center;
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius);
+  color: rgb(var(--foreground));
+  display: inline-flex;
+  font-size: .8rem;
+  font-weight: 600;
+  gap: .6rem;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: .55rem .9rem;
+  transition: border-color .16s ease, box-shadow .16s ease;
+  width: 100%;
+}
+.auth-google:hover { border-color: rgb(var(--accent)); box-shadow: var(--shadow-sm); }
+.auth-switch { color: rgb(var(--muted)); font-size: .78rem; text-align: center; }
+.auth-switch a { color: rgb(var(--accent)); font-weight: 600; text-decoration: none; }
+.auth-switch a:hover { text-decoration: underline; }
+.auth-note {
+  background: rgb(var(--surface-strong));
+  border-radius: var(--radius);
+  color: rgb(var(--muted));
+  font-size: .78rem;
+  line-height: 1.5;
+  padding: .7rem .8rem;
+}
+.auth-forgot { margin: -.35rem 0 0; text-align: right; }
+.auth-forgot a { color: rgb(var(--accent)); font-size: .74rem; font-weight: 600; text-decoration: none; }
+.auth-forgot a:hover { text-decoration: underline; }
+.turnstile { display: flex; justify-content: center; min-height: 65px; }
+
 /* ---------- Overlays ---------- */
 .drawer-scrim, .dialog-wrap {
   backdrop-filter: blur(3px);
@@ -782,6 +856,159 @@ kbd {
   .item-card__controls { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .signal-strip { grid-template-columns: 1fr; }
+}
+
+/* ---------- Legal pages ---------- */
+.legal-page {
+  display: flex;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: clamp(1rem, 4vw, 3rem);
+  padding-top: calc(clamp(1rem, 4vw, 3rem) + env(safe-area-inset-top));
+}
+.legal-card {
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  height: fit-content;
+  max-width: 46rem;
+  padding: clamp(1.4rem, 4vw, 2.5rem);
+  width: 100%;
+}
+.legal-card h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; margin: .2rem 0 .3rem; }
+.legal-card h2 { font-size: 1rem; font-weight: 700; margin: 1.6rem 0 .5rem; }
+.legal-card p, .legal-card li { color: rgb(var(--muted)); font-size: .85rem; line-height: 1.65; margin: .3rem 0; }
+.legal-card strong { color: rgb(var(--foreground)); }
+.legal-card ul { margin: .4rem 0; padding-left: 1.2rem; }
+.legal-card a { color: rgb(var(--accent)); }
+.legal-meta { font-size: .72rem; }
+.legal-footer { border-top: 1px solid rgb(var(--border)); margin-top: 2rem; padding-top: 1rem; }
+
+/* ---------- Misc new components ---------- */
+.auth-legal { color: rgb(var(--muted)); font-size: .7rem; line-height: 1.5; margin: -.2rem 0 0; text-align: center; }
+.auth-legal a { color: rgb(var(--accent)); text-decoration: none; }
+.auth-legal a:hover { text-decoration: underline; }
+.deviceonly-badge {
+  background: rgb(var(--warning-soft));
+  border-radius: 999px;
+  color: rgb(var(--warning));
+  font-size: .66rem;
+  font-weight: 600;
+  padding: .3rem .75rem;
+}
+.settings-delete { border-top: 1px solid rgb(var(--border)); margin-top: 1.1rem; padding-top: 1.1rem; }
+.settings-delete h3 { font-size: .88rem; font-weight: 700; margin: 0; }
+.module-toggle-list { display: grid; gap: .4rem; }
+.module-toggle-advanced { margin-top: .9rem; }
+.module-toggle-advanced summary {
+  color: rgb(var(--muted));
+  cursor: pointer;
+  font-size: .74rem;
+  font-weight: 600;
+  margin-bottom: .6rem;
+}
+
+/* ---------- Bottom navigation (phones only) ---------- */
+.bottom-nav { display: none; }
+
+/* Safe-area awareness for notched phones (env() is 0 elsewhere). */
+.topbar { padding-top: env(safe-area-inset-top); height: calc(4.25rem + env(safe-area-inset-top)); }
+.sidebar { padding-top: env(safe-area-inset-top); }
+.focus-stage { padding-bottom: calc(clamp(1rem, 4vw, 4rem) + env(safe-area-inset-bottom)); }
+
+/* ---------- Mobile-first layer ---------- */
+@media (max-width: 780px) {
+  /* 16px inputs stop iOS Safari from zooming the page on focus. */
+  input, select, textarea { font-size: 16px; }
+
+  /* Comfortable touch targets (~44px). */
+  .icon-button { flex-basis: 2.6rem; height: 2.6rem; }
+  .nav-link { min-height: 2.75rem; }
+  .check-toggle { height: 2.2rem; width: 2.2rem; }
+  .work-row__meta select, .item-card__controls select, .item-card__controls input { min-height: 2.5rem; }
+
+  /* Bottom tab bar. */
+  .bottom-nav {
+    align-items: center;
+    backdrop-filter: blur(16px);
+    background: rgba(var(--surface), .94);
+    border-top: 1px solid rgb(var(--border));
+    bottom: 0;
+    display: grid;
+    gap: .25rem;
+    grid-template-columns: 1fr 1fr auto 1fr 1fr;
+    left: 0;
+    padding: .4rem .9rem calc(.4rem + env(safe-area-inset-bottom));
+    position: fixed;
+    right: 0;
+    z-index: 40;
+  }
+  .bottom-nav__item {
+    align-content: center;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: rgb(var(--muted));
+    display: grid;
+    font-size: .62rem;
+    font-weight: 600;
+    gap: .18rem;
+    justify-items: center;
+    min-height: 2.9rem;
+    padding: .3rem .2rem;
+    text-decoration: none;
+  }
+  .bottom-nav__item svg { height: 1.25rem; width: 1.25rem; }
+  .bottom-nav__item--active { color: rgb(var(--accent)); }
+  .bottom-nav__add {
+    align-items: center;
+    background: linear-gradient(135deg, rgb(99 102 241), rgb(124 96 246));
+    border: 0;
+    border-radius: 999px;
+    box-shadow: 0 8px 20px -8px rgba(99, 102, 241, .85);
+    color: white;
+    display: inline-flex;
+    height: 3.1rem;
+    justify-content: center;
+    margin-top: -1.3rem;
+    width: 3.1rem;
+  }
+  .bottom-nav__add svg { height: 1.35rem; width: 1.35rem; }
+
+  /* Make room for the bar; quick capture moves into it. */
+  .app-main { padding-bottom: calc(4.6rem + env(safe-area-inset-bottom)); }
+  .topbar .primary-button { display: none; }
+  .page-wrap { padding-bottom: 2.5rem; }
+
+  /* Quick capture becomes a bottom sheet; command palette stays top-anchored
+     so the keyboard doesn't cover results. */
+  .dialog-wrap { align-items: flex-end; padding: 0; }
+  .dialog-wrap--top { align-items: flex-start; padding: .75rem .75rem 0; }
+  .capture-dialog {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 88dvh;
+    max-width: 100%;
+    overflow-y: auto;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+  .command-dialog { display: flex; flex-direction: column; max-height: 72dvh; }
+  .command-results { flex: 1; }
+  .customize-drawer { border-radius: 0; max-width: 100%; }
+
+  /* Density trims. */
+  .work-row { padding: 1rem 1rem 1.05rem; }
+  .item-card { padding: 1rem; }
+  .module-toolbar { flex-wrap: wrap; gap: .5rem; }
+}
+
+@media (max-width: 560px) {
+  /* Keep stats scannable as a 2×2 grid instead of a tall single column. */
+  .signal-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+  .signal { padding: .85rem .9rem .95rem; }
+  .signal strong { font-size: 1.5rem; }
+  .auth-card { border: 0; box-shadow: none; }
+  .lock-card { border: 0; box-shadow: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

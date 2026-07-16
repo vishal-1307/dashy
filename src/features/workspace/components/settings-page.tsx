@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Download, Laptop, Lock, Moon, Palette, ShieldCheck, Sun, SunMoon, Trash2, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, CheckCircle2, Download, Laptop, LayoutGrid, LogOut, Lock, Moon, Palette, ShieldCheck, Sun, SunMoon, Trash2, Upload, UserCircle } from "lucide-react";
 import { toast } from "sonner";
+import { modules } from "../data";
 import { useInstallPrompt } from "../hooks/use-install-prompt";
 import { workspaceExportSchema } from "../schema";
 import { clearPasscode, hasPasscode, setPasscode, verifyPasscode } from "../security";
-import { useWorkspaceStore } from "../store";
+import { ADVANCED_MODULES, CORE_MODULES, useWorkspaceStore } from "../store";
 import type { ThemeMode, WorkspaceExport } from "../types";
 import { cn } from "@/shared/lib/utils";
+import { resetAnalyticsIdentity } from "@/shared/lib/analytics";
+import { deleteUser, signOut, useSession } from "@/server/auth-client";
 
 const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -18,11 +22,17 @@ const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 export function SettingsPage() {
   const store = useWorkspaceStore();
+  const router = useRouter();
+  const { data: session } = useSession();
   const [pinEnabled, setPinEnabled] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const install = useInstallPrompt();
 
@@ -33,6 +43,15 @@ export function SettingsPage() {
   const handleInstall = async () => {
     const accepted = await install.promptInstall();
     if (accepted) toast.success("Dashy installed");
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    store.resetForSignOut();
+    resetAnalyticsIdentity();
+    router.push("/login");
+    router.refresh();
   };
 
   const savePasscode = async () => {
@@ -116,8 +135,49 @@ export function SettingsPage() {
     toast.success("Workspace cleared");
   };
 
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== "delete my account") {
+      toast.error('Type "delete my account" to confirm');
+      return;
+    }
+    setDeleting(true);
+    const { error: deleteError } = await deleteUser(
+      deletePassword ? { password: deletePassword } : {}
+    );
+    setDeleting(false);
+    if (deleteError) {
+      toast.error(deleteError.message ?? "Could not delete your account. Sign in again and retry.");
+      return;
+    }
+    // Server-side rows are gone (DB cascade); remove the local copy too.
+    store.resetForSignOut();
+    store.clearWorkspace();
+    try {
+      window.localStorage.removeItem("dashy-workspace-v1");
+    } catch {
+      // localStorage may be unavailable; nothing sensitive remains anyway.
+    }
+    router.push("/signup");
+    router.refresh();
+  };
+
   return (
     <div className="settings">
+      <section className="settings-card">
+        <div className="settings-card__head">
+          <span className="settings-card__icon"><UserCircle /></span>
+          <div>
+            <h2>Account</h2>
+            <p>{session?.user?.email ?? "Signed in"}</p>
+          </div>
+        </div>
+        <div className="settings-actions">
+          <button className="secondary-button" disabled={signingOut} onClick={handleSignOut}>
+            <LogOut /> {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </div>
+      </section>
+
       <section className="settings-card">
         <div className="settings-card__head">
           <span className="settings-card__icon"><Laptop /></span>
@@ -171,6 +231,53 @@ export function SettingsPage() {
 
       <section className="settings-card">
         <div className="settings-card__head">
+          <span className="settings-card__icon"><LayoutGrid /></span>
+          <div>
+            <h2>Modules</h2>
+            <p>Choose which modules appear in your sidebar. Hiding a module never deletes its data.</p>
+          </div>
+        </div>
+        <div className="module-toggle-list">
+          {modules
+            .filter((entry) => !CORE_MODULES.includes(entry.key) && !ADVANCED_MODULES.includes(entry.key))
+            .map((entry) => {
+              const visible = !store.hiddenModules.includes(entry.key);
+              return (
+                <button
+                  key={entry.key}
+                  className={cn("selection-row", visible && "selection-row--selected")}
+                  onClick={() => store.toggleModuleVisibility(entry.key)}
+                >
+                  <span className="selection-check">{visible ? <Check /> : null}</span>
+                  <span><strong>{entry.label}</strong><small>{entry.description}</small></span>
+                </button>
+              );
+            })}
+        </div>
+        <details className="module-toggle-advanced">
+          <summary>Advanced (personal-use modules)</summary>
+          <div className="module-toggle-list">
+            {modules
+              .filter((entry) => ADVANCED_MODULES.includes(entry.key))
+              .map((entry) => {
+                const visible = !store.hiddenModules.includes(entry.key);
+                return (
+                  <button
+                    key={entry.key}
+                    className={cn("selection-row", visible && "selection-row--selected")}
+                    onClick={() => store.toggleModuleVisibility(entry.key)}
+                  >
+                    <span className="selection-check">{visible ? <Check /> : null}</span>
+                    <span><strong>{entry.label}</strong><small>{entry.description}</small></span>
+                  </button>
+                );
+              })}
+          </div>
+        </details>
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-card__head">
           <span className="settings-card__icon"><ShieldCheck /></span>
           <div>
             <h2>App lock</h2>
@@ -204,8 +311,8 @@ export function SettingsPage() {
             ) : null}
           </div>
           <p className="settings-note">
-            Only a salted PBKDF2 hash of the passcode is stored. Note: workspace data itself stays in browser
-            storage — connect the database for encrypted, account-based storage.
+            Only a salted PBKDF2 hash of the passcode is stored. This is a quick lock for this device on top of
+            your account session — signing out still requires your password to get back in.
           </p>
         </div>
       </section>
@@ -241,13 +348,47 @@ export function SettingsPage() {
           <span className="settings-card__icon"><Trash2 /></span>
           <div>
             <h2>Danger zone</h2>
-            <p>Remove every item from this workspace. Export a backup first.</p>
+            <p>These can&apos;t be undone. Export a backup first.</p>
           </div>
         </div>
         <div className="settings-actions">
           <button className="danger-button" onClick={clearAll}>
             <Trash2 /> {confirmingClear ? "Click again to confirm" : "Clear all data"}
           </button>
+        </div>
+        <div className="settings-form settings-delete">
+          <h3>Delete account</h3>
+          <p className="settings-note">
+            Permanently deletes your account and everything in it — tasks, projects, and all other data. Type
+            <strong> delete my account</strong> to confirm. Password is required unless you signed in recently.
+          </p>
+          <div className="form-grid">
+            <label>Confirmation
+              <input
+                placeholder="delete my account"
+                type="text"
+                value={deleteConfirmText}
+                onChange={(event) => setDeleteConfirmText(event.target.value)}
+              />
+            </label>
+            <label>Password (if you have one)
+              <input
+                autoComplete="current-password"
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="settings-actions">
+            <button
+              className="danger-button"
+              disabled={deleting || deleteConfirmText.trim().toLowerCase() !== "delete my account"}
+              onClick={handleDeleteAccount}
+            >
+              <Trash2 /> {deleting ? "Deleting…" : "Delete my account permanently"}
+            </button>
+          </div>
         </div>
       </section>
     </div>

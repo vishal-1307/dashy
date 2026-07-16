@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 enum Priority {
@@ -59,46 +60,46 @@ enum NotificationType {
 }
 
 model User {
-  id                String               @id @default(cuid())
-  name              String?
-  email             String               @unique
-  emailVerified     Boolean              @default(false)
-  image             String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  sessions          Session[]
-  accounts          Account[]
-  settings          UserSettings?
-  projects          Project[]
-  tasks             Task[]
-  milestones        Milestone[]
-  notes             Note[]
-  knowledgePages    KnowledgePage[]
-  ideas             Idea[]
-  documents         Document[]
-  files             FileAsset[]
-  calendarEvents    CalendarEvent[]
-  goals             Goal[]
-  habits            Habit[]
-  journalEntries    JournalEntry[]
-  learningItems     LearningItem[]
-  courses           Course[]
-  resources         Resource[]
-  transactions      FinanceTransaction[]
-  budgets           Budget[]
-  subscriptions     Subscription[]
-  crmLeads          CrmLead[]
-  schools           School[]
-  ngoProjects       NgoProject[]
-  volunteers        Volunteer[]
-  beneficiaries     Beneficiary[]
-  contacts          Contact[]
-  notifications     Notification[]
-  activityLogs      ActivityLog[]
-  comments          Comment[]
-  workSessions      WorkSession[]
-  pomodoroSessions  PomodoroSession[]
-  tags              Tag[]
+  id               String               @id @default(cuid())
+  name             String
+  email            String               @unique
+  emailVerified    Boolean              @default(false)
+  image            String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  sessions         Session[]
+  accounts         Account[]
+  settings         UserSettings?
+  projects         Project[]
+  tasks            Task[]
+  milestones       Milestone[]
+  notes            Note[]
+  knowledgePages   KnowledgePage[]
+  ideas            Idea[]
+  documents        Document[]
+  files            FileAsset[]
+  calendarEvents   CalendarEvent[]
+  goals            Goal[]
+  habits           Habit[]
+  journalEntries   JournalEntry[]
+  learningItems    LearningItem[]
+  courses          Course[]
+  resources        Resource[]
+  transactions     FinanceTransaction[]
+  budgets          Budget[]
+  subscriptions    Subscription[]
+  crmLeads         CrmLead[]
+  schools          School[]
+  ngoProjects      NgoProject[]
+  volunteers       Volunteer[]
+  beneficiaries    Beneficiary[]
+  contacts         Contact[]
+  notifications    Notification[]
+  activityLogs     ActivityLog[]
+  comments         Comment[]
+  workSessions     WorkSession[]
+  pomodoroSessions PomodoroSession[]
+  tags             Tag[]
 }
 
 model Session {
@@ -131,20 +132,40 @@ model Account {
   updatedAt             DateTime  @updatedAt
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
   @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// Better Auth rate-limit storage (storage: "database"). Kept in the schema's
+// PascalCase convention — no @@map — to match the other auth tables.
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
 }
 
 model UserSettings {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  theme                 String   @default("system")
-  notificationsEnabled  Boolean  @default(true)
-  keyboardShortcuts     Json?
-  connectedAccounts     Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  theme                String   @default("system")
+  notificationsEnabled Boolean  @default(true)
+  keyboardShortcuts    Json?
+  connectedAccounts    Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Project {
@@ -155,6 +176,7 @@ model Project {
   color            String?
   icon             String?
   status           WorkStatus    @default(PLANNED)
+  previousStatus   WorkStatus?
   priority         Priority      @default(MEDIUM)
   startDate        DateTime?
   deadline         DateTime?
@@ -196,33 +218,34 @@ model Milestone {
 }
 
 model Task {
-  id              String            @id @default(cuid())
-  userId          String
-  projectId       String?
-  parentId        String?
-  title           String
-  description     String?
-  status          WorkStatus        @default(PLANNED)
-  priority        Priority          @default(MEDIUM)
-  dueDate         DateTime?
-  reminderAt      DateTime?
-  recurrence      RecurrenceFrequency @default(NONE)
+  id               String              @id @default(cuid())
+  userId           String
+  projectId        String?
+  parentId         String?
+  title            String
+  description      String?
+  status           WorkStatus          @default(PLANNED)
+  previousStatus   WorkStatus?
+  priority         Priority            @default(MEDIUM)
+  dueDate          DateTime?
+  reminderAt       DateTime?
+  recurrence       RecurrenceFrequency @default(NONE)
   estimatedMinutes Int?
-  actualMinutes   Int?
-  progress        Int               @default(0)
-  completedAt     DateTime?
-  archivedAt      DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parent          Task?             @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks        Task[]            @relation("TaskSubtasks")
-  dependencies    TaskDependency[]  @relation("TaskDependencySource")
-  dependents      TaskDependency[]  @relation("TaskDependencyTarget")
-  files           FileAsset[]
-  comments        Comment[]
-  tags            Tag[]             @relation("TaskTags")
+  actualMinutes    Int?
+  progress         Int                 @default(0)
+  completedAt      DateTime?
+  archivedAt       DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent           Task?               @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks         Task[]              @relation("TaskSubtasks")
+  dependencies     TaskDependency[]    @relation("TaskDependencySource")
+  dependents       TaskDependency[]    @relation("TaskDependencyTarget")
+  files            FileAsset[]
+  comments         Comment[]
+  tags             Tag[]               @relation("TaskTags")
 
   @@index([userId, status])
   @@index([projectId])
@@ -259,23 +282,23 @@ model CalendarEvent {
 }
 
 model KnowledgePage {
-  id          String          @id @default(cuid())
-  userId      String
-  parentId    String?
-  title       String
-  slug        String
-  content     String?
-  summary     String?
-  isFavorite  Boolean         @default(false)
-  isPinned    Boolean         @default(false)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent      KnowledgePage?  @relation("KnowledgeHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children    KnowledgePage[] @relation("KnowledgeHierarchy")
-  versions    PageVersion[]
-  notes       Note[]
-  tags        Tag[]           @relation("KnowledgeTags")
+  id         String          @id @default(cuid())
+  userId     String
+  parentId   String?
+  title      String
+  slug       String
+  content    String?
+  summary    String?
+  isFavorite Boolean         @default(false)
+  isPinned   Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent     KnowledgePage?  @relation("KnowledgeHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children   KnowledgePage[] @relation("KnowledgeHierarchy")
+  versions   PageVersion[]
+  notes      Note[]
+  tags       Tag[]           @relation("KnowledgeTags")
 
   @@unique([userId, slug])
   @@index([parentId])
@@ -290,7 +313,7 @@ model PageVersion {
 }
 
 model Note {
-  id              String          @id @default(cuid())
+  id              String         @id @default(cuid())
   userId          String
   projectId       String?
   eventId         String?
@@ -298,17 +321,17 @@ model Note {
   title           String
   content         String?
   folder          String?
-  isPinned        Boolean         @default(false)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  event           CalendarEvent?  @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  knowledgePage   KnowledgePage?  @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
-  outgoingLinks   NoteLink[]      @relation("SourceNote")
-  incomingLinks   NoteLink[]      @relation("TargetNote")
+  isPinned        Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  event           CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  knowledgePage   KnowledgePage? @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+  outgoingLinks   NoteLink[]     @relation("SourceNote")
+  incomingLinks   NoteLink[]     @relation("TargetNote")
   files           FileAsset[]
-  tags            Tag[]           @relation("NoteTags")
+  tags            Tag[]          @relation("NoteTags")
 
   @@index([userId, updatedAt])
 }
@@ -341,18 +364,18 @@ model Idea {
 }
 
 model Document {
-  id          String       @id @default(cuid())
+  id          String        @id @default(cuid())
   userId      String
   title       String
   description String?
   folder      String?
   type        String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   files       FileAsset[]
   versions    FileVersion[]
-  tags        Tag[]        @relation("DocumentTags")
+  tags        Tag[]         @relation("DocumentTags")
 }
 
 model FileAsset {
@@ -385,47 +408,47 @@ model FileVersion {
 }
 
 model Goal {
-  id          String        @id @default(cuid())
-  userId      String
-  projectId   String?
-  title       String
-  description String?
-  period      GoalPeriod
-  progress    Int           @default(0)
-  targetValue Int?
-  currentValue Int          @default(0)
-  startsAt    DateTime?
-  dueDate     DateTime?
-  status      WorkStatus    @default(ACTIVE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  milestones  GoalMilestone[]
-  tags        Tag[]         @relation("GoalTags")
+  id           String          @id @default(cuid())
+  userId       String
+  projectId    String?
+  title        String
+  description  String?
+  period       GoalPeriod
+  progress     Int             @default(0)
+  targetValue  Int?
+  currentValue Int             @default(0)
+  startsAt     DateTime?
+  dueDate      DateTime?
+  status       WorkStatus      @default(ACTIVE)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestones   GoalMilestone[]
+  tags         Tag[]           @relation("GoalTags")
 }
 
 model GoalMilestone {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   goalId    String
   title     String
-  done      Boolean  @default(false)
+  done      Boolean   @default(false)
   dueDate   DateTime?
-  createdAt DateTime @default(now())
-  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
 }
 
 model Habit {
-  id            String     @id @default(cuid())
+  id            String              @id @default(cuid())
   userId        String
   title         String
   description   String?
   frequency     RecurrenceFrequency @default(DAILY)
-  currentStreak Int        @default(0)
-  longestStreak Int        @default(0)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak Int                 @default(0)
+  longestStreak Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs          HabitLog[]
 }
 
@@ -461,17 +484,17 @@ model JournalEntry {
 }
 
 model Course {
-  id            String         @id @default(cuid())
-  userId        String
-  title         String
-  provider      String?
-  category      String?
-  progress      Int            @default(0)
+  id             String         @id @default(cuid())
+  userId         String
+  title          String
+  provider       String?
+  category       String?
+  progress       Int            @default(0)
   certificateUrl String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  learningItems LearningItem[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningItems  LearningItem[]
 }
 
 model Resource {
@@ -521,17 +544,17 @@ model FinanceTransaction {
 }
 
 model Budget {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  category    String
-  amount      Decimal  @db.Decimal(12, 2)
-  spent       Decimal  @default(0) @db.Decimal(12, 2)
-  startsAt    DateTime
-  endsAt      DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  category  String
+  amount    Decimal  @db.Decimal(12, 2)
+  spent     Decimal  @default(0) @db.Decimal(12, 2)
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Subscription {
@@ -550,23 +573,23 @@ model Subscription {
 }
 
 model CrmLead {
-  id          String     @id @default(cuid())
-  userId      String
-  name        String
-  company     String?
-  email       String?
-  phone       String?
-  status      String     @default("Interested")
-  value       Decimal?   @db.Decimal(12, 2)
-  notes       String?
+  id           String    @id @default(cuid())
+  userId       String
+  name         String
+  company      String?
+  email        String?
+  phone        String?
+  status       String    @default("Interested")
+  value        Decimal?  @db.Decimal(12, 2)
+  notes        String?
   nextFollowUp DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model School {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   userId         String
   name           String
   principal      String?
@@ -578,24 +601,24 @@ model School {
   proposalStatus String?
   followUpAt     DateTime?
   meetingNotes   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model NgoProject {
-  id          String        @id @default(cuid())
-  userId      String
-  title       String
-  description String?
-  status      WorkStatus    @default(PLANNED)
-  budget      Decimal?      @db.Decimal(12, 2)
-  startsAt    DateTime?
-  endsAt      DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  volunteers  Volunteer[]
+  id            String        @id @default(cuid())
+  userId        String
+  title         String
+  description   String?
+  status        WorkStatus    @default(PLANNED)
+  budget        Decimal?      @db.Decimal(12, 2)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  volunteers    Volunteer[]
   beneficiaries Beneficiary[]
 }
 
@@ -684,26 +707,26 @@ model Comment {
 }
 
 model WorkSession {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   title     String?
-  startsAt  DateTime @default(now())
+  startsAt  DateTime  @default(now())
   endsAt    DateTime?
   minutes   Int?
   notes     String?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model PomodoroSession {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   minutes   Int
-  completed Boolean  @default(false)
-  startedAt DateTime @default(now())
+  completed Boolean   @default(false)
+  startedAt DateTime  @default(now())
   endedAt   DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Tag {

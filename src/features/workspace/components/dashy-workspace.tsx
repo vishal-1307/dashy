@@ -71,7 +71,8 @@ import { Toaster, toast } from "sonner";
 import { modules, priorityRank } from "../data";
 import { quickCaptureSchema } from "../schema";
 import { hasPasscode } from "../security";
-import { useWorkspaceStore } from "../store";
+import { DB_BACKED_MODULES, useWorkspaceStore } from "../store";
+import { track } from "@/shared/lib/analytics";
 import type { ItemStatus, ModuleKey, Priority, WorkspaceItem } from "../types";
 import { cn } from "@/shared/lib/utils";
 import { LockScreen } from "./lock-screen";
@@ -143,6 +144,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
 
   useEffect(() => {
     store.setActiveModule(module);
+    track("module_opened", { module });
   }, [module, store.setActiveModule]);
 
   useEffect(() => {
@@ -426,12 +428,16 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
           router.push(`/${item.module}`);
         }}
       />
+      <BottomNav module={module} />
     </main>
   );
 }
 
 function Sidebar({ module }: { module: ModuleKey }) {
-  const { items, sidebarOpen, setSidebarOpen } = useWorkspaceStore();
+  const { items, sidebarOpen, setSidebarOpen, hiddenModules } = useWorkspaceStore();
+  const visibleModules = modules.filter(
+    (item) => !hiddenModules.includes(item.key) || item.key === module
+  );
   const closeOnMobile = () => {
     if (window.innerWidth <= 780) {
       setSidebarOpen(false);
@@ -450,7 +456,7 @@ function Sidebar({ module }: { module: ModuleKey }) {
           </IconButton>
         </div>
         <nav className="sidebar__nav" aria-label="Workspace">
-          {modules.map((item) => {
+          {visibleModules.map((item) => {
             const Icon = moduleIcons[item.key];
             const count = items.filter((entry) => entry.module === item.key && entry.status !== "archived").length;
             return (
@@ -470,6 +476,54 @@ function Sidebar({ module }: { module: ModuleKey }) {
       </aside>
       {sidebarOpen ? <button className="sidebar-scrim" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} /> : null}
     </>
+  );
+}
+
+/**
+ * Phone-only bottom tab bar (hidden ≥781px by CSS): the four highest-traffic
+ * destinations plus a centered quick-capture button, so one-handed use never
+ * requires the drawer.
+ */
+function BottomNav({ module }: { module: ModuleKey }) {
+  const store = useWorkspaceStore();
+  const tabs: { key: ModuleKey; label: string; href: string }[] = [
+    { key: "dashboard", label: "Home", href: "/" },
+    { key: "tasks", label: "Tasks", href: "/tasks" }
+  ];
+  const rightTabs: { key: ModuleKey; label: string; href: string }[] = [
+    { key: "projects", label: "Projects", href: "/projects" }
+  ];
+  return (
+    <nav className="bottom-nav" aria-label="Primary">
+      {tabs.map((tab) => {
+        const Icon = moduleIcons[tab.key];
+        return (
+          <Link className={cn("bottom-nav__item", module === tab.key && "bottom-nav__item--active")} href={tab.href} key={tab.key}>
+            <Icon />
+            <span>{tab.label}</span>
+          </Link>
+        );
+      })}
+      <button className="bottom-nav__add" aria-label="Quick capture" onClick={() => store.setCaptureOpen(true)}>
+        <Plus />
+      </button>
+      {rightTabs.map((tab) => {
+        const Icon = moduleIcons[tab.key];
+        return (
+          <Link className={cn("bottom-nav__item", module === tab.key && "bottom-nav__item--active")} href={tab.href} key={tab.key}>
+            <Icon />
+            <span>{tab.label}</span>
+          </Link>
+        );
+      })}
+      <button
+        className={cn("bottom-nav__item")}
+        onClick={() => store.setSidebarOpen(true)}
+      >
+        <Menu />
+        <span>More</span>
+      </button>
+    </nav>
   );
 }
 
@@ -680,6 +734,7 @@ function ModulePage({
 }) {
   const Icon = moduleIcons[definition.key];
   const archivedForModule = archivedItems.filter((item) => item.module === definition.key);
+  const deviceOnly = !DB_BACKED_MODULES.includes(definition.key) && definition.key !== "settings";
   const today = localDateString();
   const groups =
     definition.key === "tasks"
@@ -702,6 +757,11 @@ function ModulePage({
       <section className="module-toolbar">
         <span>{items.length} active items</span>
         <span>{items.filter((item) => item.status === "done").length} completed</span>
+        {deviceOnly ? (
+          <span className="deviceonly-badge" title="Items in this module are saved in this browser only until cloud sync ships.">
+            Stored on this device only — sync coming
+          </span>
+        ) : null}
       </section>
       {groups ? (
         groups.length ? (

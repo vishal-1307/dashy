@@ -2,13 +2,17 @@ import type { NextConfig } from "next";
 
 // 'unsafe-inline' / 'unsafe-eval' are required by Next.js runtime scripts and
 // inline style attributes; everything else is locked to same-origin.
+// Cloudflare Turnstile loads its widget script and renders its challenge in an
+// iframe from challenges.cloudflare.com, so it needs script-src + frame-src.
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  // PostHog ingestion (no-op unless NEXT_PUBLIC_POSTHOG_KEY is set).
+  "connect-src 'self' https://*.i.posthog.com https://*.posthog.com",
+  "frame-src https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

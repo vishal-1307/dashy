@@ -52,6 +52,26 @@ export const workspaceItemSchema = z.object({
   updatedAt: z.string().max(40)
 });
 
+// Server-side validation for DB-backed create/update (Tasks, Projects).
+// Reused so the server never trusts a payload just because the client
+// already ran quickCaptureSchema — a request could bypass the UI entirely.
+export const serverCreateSchema = quickCaptureSchema.extend({
+  id: z.string().trim().min(1).max(120)
+});
+
+// A key that is absent means "don't touch this field"; a key explicitly set
+// to null means "clear it" (used for dueDate/previousStatus). Distinguishing
+// the two requires nullable+optional rather than .partial() on the base schema.
+export const serverUpdateSchema = z.object({
+  title: z.string().trim().min(1, "Add a title first").max(300).optional(),
+  description: z.string().trim().max(10000).optional(),
+  status: itemStatusSchema.optional(),
+  priority: prioritySchema.optional(),
+  dueDate: isoDate.nullable().optional(),
+  progress: z.number().min(0).max(100).optional(),
+  previousStatus: itemStatusSchema.nullable().optional()
+});
+
 export const workspaceExportSchema = z.object({
   app: z.literal("dashy"),
   version: z.number().int().min(1),

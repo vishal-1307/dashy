@@ -2,10 +2,40 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { seedItems } from "./data";
+import { toast } from "sonner";
+import { createProject, deleteProject, listProjects, restoreProject, updateProject } from "@/server/actions/projects";
+import { createTask, deleteTask, listTasks, restoreTask, updateTask } from "@/server/actions/tasks";
+import { track } from "@/shared/lib/analytics";
 import type { ItemStatus, ModuleKey, QuickCaptureInput, ThemeMode, WorkspaceExport, WorkspaceItem } from "./types";
 
 export const FOCUS_SESSION_SECONDS = 25 * 60;
+
+/** Modules whose data lives in the database (grows as modules migrate). */
+export const DB_BACKED_MODULES: ModuleKey[] = ["tasks", "projects"];
+
+/** Modules that can never be hidden. */
+export const CORE_MODULES: ModuleKey[] = ["dashboard", "tasks", "projects", "settings"];
+
+/** Personal/venture-specific modules, tucked behind the "advanced" group. */
+export const ADVANCED_MODULES: ModuleKey[] = ["school", "ngo"];
+
+/**
+ * Default hidden set for NEW users: a curated sidebar beats 19 entries.
+ * Existing users are migrated to an empty list (nothing taken away) — see
+ * the persist migrate() below.
+ */
+export const DEFAULT_HIDDEN_MODULES: ModuleKey[] = [
+  "ideas",
+  "documents",
+  "learning",
+  "knowledge",
+  "finance",
+  "crm",
+  "contacts",
+  "analytics",
+  "school",
+  "ngo"
+];
 
 type DeletedEntry = {
   item: WorkspaceItem;
@@ -27,6 +57,14 @@ type WorkspaceState = {
   unlocked: boolean;
   timerSeconds: number;
   timerRunning: boolean;
+  /** Modules the user has hidden from the sidebar (visibility, not security). */
+  hiddenModules: ModuleKey[];
+  /** Whether the one-time "import your local Tasks/Projects" prompt was already resolved. */
+  legacyImportPromptShown: boolean;
+  /** Local tasks/projects not found on the server after the last hydration. Not persisted. */
+  legacyImportCandidateIds: string[];
+  /** Guards against re-fetching on every re-render. Not persisted. */
+  hasHydrated: boolean;
   setActiveModule: (module: ModuleKey) => void;
   setQuery: (query: string) => void;
   setFocusMode: (value: boolean) => void;
@@ -34,6 +72,7 @@ type WorkspaceState = {
   setCommandOpen: (value: boolean) => void;
   setCaptureOpen: (value: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
+  toggleModuleVisibility: (module: ModuleKey) => void;
   setUnlocked: (value: boolean) => void;
   setTimerRunning: (value: boolean) => void;
   resetTimer: () => void;
@@ -48,6 +87,18 @@ type WorkspaceState = {
   restoreItem: (id: string) => void;
   importWorkspace: (data: WorkspaceExport) => void;
   clearWorkspace: () => void;
+  /** Fetches this user's Tasks/Projects from the DB and merges them into items. */
+  hydrateFromServer: () => Promise<void>;
+  /** Sends the given legacy local-only Task/Project ids to the server. */
+  importLegacyItems: (ids: string[]) => Promise<void>;
+  dismissLegacyImport: () => void;
+  /**
+   * Drops the cached Tasks/Projects slice and hydration bookkeeping on sign
+   * out, so a different account signing in on this device doesn't see the
+   * previous account's DB-backed items before the next hydration replaces
+   * them, and isn't offered them as an "import your local data" prompt.
+   */
+  resetForSignOut: () => void;
 };
 
 const uid = () => {
@@ -59,23 +110,48 @@ const uid = () => {
 };
 
 const ongoing = (item: WorkspaceItem) => item.status === "active" || item.status === "planned";
+const isDbBacked = (module: ModuleKey) => DB_BACKED_MODULES.includes(module);
+
+const actionsFor = (module: ModuleKey) =>
+  module === "tasks"
+    ? { create: createTask, update: updateTask, remove: deleteTask, restore: restoreTask, list: listTasks }
+    : { create: createProject, update: updateProject, remove: deleteProject, restore: restoreProject, list: listProjects };
+
+// Tracks in-flight deletes so an "Undo" click waits for the real delete to
+// land before asking the server to recreate the row (avoids a recreate
+// racing ahead of, and then being clobbered by, the delete it's undoing).
+// Resolves true if the row is confirmed gone server-side (or never existed
+// there), false if the delete failed and was already rolled back locally.
+const pendingDeletes = new Map<string, Promise<boolean>>();
+
+// Debounces rapid edits (every keystroke, every slider tick) into a single
+// server write per item, so autosave doesn't hammer the DB or let a stale
+// rollback clobber a newer edit that landed while an older one was in flight.
+const UPDATE_DEBOUNCE_MS = 600;
+const pendingUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingUpdateSnapshots = new Map<string, WorkspaceItem>();
+const pendingUpdatePayloads = new Map<string, Record<string, unknown>>();
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
       activeModule: "dashboard",
-      items: seedItems,
+      items: [],
       query: "",
       focusMode: false,
       sidebarOpen: true,
       commandOpen: false,
       captureOpen: false,
       theme: "system",
-      dashboardOrder: seedItems.filter(ongoing).map((item) => item.id),
-      dashboardVisibleIds: seedItems.filter(ongoing).slice(0, 4).map((item) => item.id),
+      dashboardOrder: [],
+      dashboardVisibleIds: [],
+      hiddenModules: DEFAULT_HIDDEN_MODULES,
       unlocked: false,
       timerSeconds: FOCUS_SESSION_SECONDS,
       timerRunning: false,
+      legacyImportPromptShown: false,
+      legacyImportCandidateIds: [],
+      hasHydrated: false,
       setActiveModule: (module) => set({ activeModule: module }),
       setQuery: (query) => set({ query }),
       setFocusMode: (value) => set({ focusMode: value }),
@@ -83,6 +159,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setCommandOpen: (value) => set({ commandOpen: value }),
       setCaptureOpen: (value) => set({ captureOpen: value }),
       setTheme: (theme) => set({ theme }),
+      toggleModuleVisibility: (module) => {
+        if (CORE_MODULES.includes(module)) return;
+        const hidden = get().hiddenModules;
+        set({
+          hiddenModules: hidden.includes(module)
+            ? hidden.filter((key) => key !== module)
+            : [...hidden, module]
+        });
+      },
       setUnlocked: (value) => set({ unlocked: value }),
       setTimerRunning: (value) =>
         set((state) => ({
@@ -147,14 +232,78 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           dashboardOrder: [item.id, ...get().dashboardOrder],
           dashboardVisibleIds: [item.id, ...get().dashboardVisibleIds]
         });
+        track("item_created", { module: item.module });
+
+        if (isDbBacked(item.module)) {
+          const { create } = actionsFor(item.module);
+          create({
+            id: item.id,
+            module: item.module,
+            title: item.title,
+            description: item.description,
+            priority: item.priority,
+            dueDate: item.dueDate,
+            tags: []
+          }).catch(() => {
+            set({
+              items: get().items.filter((entry) => entry.id !== item.id),
+              dashboardOrder: get().dashboardOrder.filter((entryId) => entryId !== item.id),
+              dashboardVisibleIds: get().dashboardVisibleIds.filter((entryId) => entryId !== item.id)
+            });
+            toast.error(`Could not save "${item.title}" — removed.`);
+          });
+        }
+
         return item;
       },
-      updateItem: (id, updates) =>
+      updateItem: (id, updates) => {
+        const current = get().items.find((item) => item.id === id);
         set({
           items: get().items.map((item) =>
             item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item
           )
-        }),
+        });
+
+        if (!current || !isDbBacked(current.module)) {
+          return;
+        }
+
+        if (!pendingUpdateSnapshots.has(id)) {
+          pendingUpdateSnapshots.set(id, current);
+        }
+        const payload = pendingUpdatePayloads.get(id) ?? {};
+        if (updates.title !== undefined) payload.title = updates.title;
+        if (updates.description !== undefined) payload.description = updates.description;
+        if (updates.status !== undefined) payload.status = updates.status;
+        if (updates.priority !== undefined) payload.priority = updates.priority;
+        if (updates.progress !== undefined) payload.progress = updates.progress;
+        if ("dueDate" in updates) payload.dueDate = updates.dueDate ?? null;
+        if ("previousStatus" in updates) payload.previousStatus = updates.previousStatus ?? null;
+        pendingUpdatePayloads.set(id, payload);
+
+        const existingTimer = pendingUpdateTimers.get(id);
+        if (existingTimer) clearTimeout(existingTimer);
+
+        pendingUpdateTimers.set(
+          id,
+          setTimeout(() => {
+            const module = get().items.find((item) => item.id === id)?.module ?? current.module;
+            const snapshot = pendingUpdateSnapshots.get(id) ?? current;
+            const finalPayload = pendingUpdatePayloads.get(id) ?? {};
+            pendingUpdateTimers.delete(id);
+            pendingUpdateSnapshots.delete(id);
+            pendingUpdatePayloads.delete(id);
+
+            const { update } = actionsFor(module);
+            update(id, finalPayload).catch(() => {
+              set({
+                items: get().items.map((item) => (item.id === id ? snapshot : item))
+              });
+              toast.error(`Could not save changes to "${snapshot.title}" — reverted.`);
+            });
+          }, UPDATE_DEBOUNCE_MS)
+        );
+      },
       deleteItem: (id) => {
         const items = get().items;
         const index = items.findIndex((item) => item.id === id);
@@ -163,6 +312,28 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
         const item = items[index];
         set({ items: items.filter((entry) => entry.id !== id) });
+
+        if (isDbBacked(item.module)) {
+          const { remove } = actionsFor(item.module);
+          const promise = remove(id)
+            .then(() => true)
+            .catch(() => {
+              const currentItems = get().items;
+              if (!currentItems.some((entry) => entry.id === id)) {
+                const restoreIndex = Math.min(index, currentItems.length);
+                const next = [...currentItems];
+                next.splice(restoreIndex, 0, item);
+                set({ items: next });
+              }
+              toast.error(`Could not delete "${item.title}" — restored.`);
+              return false;
+            })
+            .finally(() => {
+              pendingDeletes.delete(id);
+            });
+          pendingDeletes.set(id, promise);
+        }
+
         return { item, index };
       },
       restoreDeletedItem: ({ item, index }) => {
@@ -172,6 +343,26 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
         items.splice(Math.min(index, items.length), 0, item);
         set({ items });
+
+        if (!isDbBacked(item.module)) {
+          return;
+        }
+
+        void (async () => {
+          const pending = pendingDeletes.get(item.id);
+          const deleteConfirmed = pending ? await pending : true;
+          if (!deleteConfirmed) {
+            // Delete never actually happened server-side (already rolled back); nothing to recreate.
+            return;
+          }
+          const { restore } = actionsFor(item.module);
+          try {
+            await restore(item);
+          } catch {
+            set({ items: get().items.filter((entry) => entry.id !== item.id) });
+            toast.error(`Could not restore "${item.title}" — try again.`);
+          }
+        })();
       },
       archiveItem: (id) => {
         const current = get().items.find((item) => item.id === id);
@@ -203,15 +394,86 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ...(data.theme ? { theme: data.theme } : {})
         });
       },
-      clearWorkspace: () => set({ items: [], dashboardOrder: [], dashboardVisibleIds: [] })
+      clearWorkspace: () => set({ items: [], dashboardOrder: [], dashboardVisibleIds: [] }),
+      hydrateFromServer: async () => {
+        const [serverTasks, serverProjects] = await Promise.all([listTasks(), listProjects()]);
+        const serverItems = [...serverTasks, ...serverProjects];
+        const serverIds = new Set(serverItems.map((item) => item.id));
+
+        const state = get();
+        const nonDbItems = state.items.filter((item) => !isDbBacked(item.module));
+        const localOnlyDbItems = state.items.filter(
+          (item) => isDbBacked(item.module) && !serverIds.has(item.id)
+        );
+
+        set({
+          items: [...serverItems, ...localOnlyDbItems, ...nonDbItems],
+          legacyImportCandidateIds: state.legacyImportPromptShown ? [] : localOnlyDbItems.map((item) => item.id),
+          hasHydrated: true
+        });
+      },
+      importLegacyItems: async (ids) => {
+        const items = get().items.filter((item) => ids.includes(item.id));
+        await Promise.all(
+          items.map(async (item) => {
+            const { create } = actionsFor(item.module);
+            await create({
+              id: item.id,
+              module: item.module,
+              title: item.title,
+              description: item.description,
+              priority: item.priority,
+              dueDate: item.dueDate,
+              tags: []
+            });
+          })
+        );
+        set({ legacyImportPromptShown: true, legacyImportCandidateIds: [] });
+      },
+      dismissLegacyImport: () => set({ legacyImportPromptShown: true, legacyImportCandidateIds: [] }),
+      resetForSignOut: () => {
+        // Cancel queued/debounced server writes so nothing fires for the
+        // previous account after a different user signs in on this device.
+        for (const timer of pendingUpdateTimers.values()) {
+          clearTimeout(timer);
+        }
+        pendingUpdateTimers.clear();
+        pendingUpdateSnapshots.clear();
+        pendingUpdatePayloads.clear();
+        pendingDeletes.clear();
+
+        const state = get();
+        const remainingItems = state.items.filter((item) => !isDbBacked(item.module));
+        const remainingIds = new Set(remainingItems.map((item) => item.id));
+        set({
+          items: remainingItems,
+          dashboardOrder: state.dashboardOrder.filter((id) => remainingIds.has(id)),
+          dashboardVisibleIds: state.dashboardVisibleIds.filter((id) => remainingIds.has(id)),
+          legacyImportPromptShown: false,
+          legacyImportCandidateIds: [],
+          hasHydrated: false
+        });
+      }
     }),
     {
       name: "dashy-workspace-v1",
+      version: 2,
+      // Existing browsers (persisted before hiddenModules existed) keep every
+      // module visible — the curated default only applies to brand-new users.
+      migrate: (persisted, version) => {
+        const state = persisted as Partial<WorkspaceState>;
+        if (version < 2) {
+          state.hiddenModules = [];
+        }
+        return state as WorkspaceState;
+      },
       partialize: (state) => ({
         items: state.items,
         theme: state.theme,
         dashboardOrder: state.dashboardOrder,
-        dashboardVisibleIds: state.dashboardVisibleIds
+        dashboardVisibleIds: state.dashboardVisibleIds,
+        hiddenModules: state.hiddenModules,
+        legacyImportPromptShown: state.legacyImportPromptShown
       })
     }
   )

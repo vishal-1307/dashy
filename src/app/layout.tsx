@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { TaskProjectSync } from "@/features/workspace/components/task-project-sync";
+import { AnalyticsProvider } from "./analytics-provider";
 import { ServiceWorkerRegistration } from "./service-worker-registration";
 
 export const metadata: Metadata = {
@@ -28,7 +30,10 @@ export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f6f6f9" },
     { media: "(prefers-color-scheme: dark)", color: "#0f0f14" }
-  ]
+  ],
+  // Let the app draw edge-to-edge on notched phones; safe-area insets are
+  // handled in CSS (env(safe-area-inset-*)).
+  viewportFit: "cover"
 };
 
 export default function RootLayout({
@@ -41,6 +46,8 @@ export default function RootLayout({
       <body>
         <a className="sr-only focus:not-sr-only" href="#main-content">Skip to content</a>
         {children}
+        <TaskProjectSync />
+        <AnalyticsProvider />
         <ServiceWorkerRegistration />
       </body>
     </html>
