@@ -29,6 +29,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  Briefcase,
   Building2,
   CalendarDays,
   Check,
@@ -77,6 +78,9 @@ import type { ItemStatus, ModuleKey, Priority, WorkspaceItem, WorkspaceSlug } fr
 import { cn } from "@/shared/lib/utils";
 import { LockScreen } from "./lock-screen";
 import { SettingsPage } from "./settings-page";
+import { FinanceView } from "./finance-view";
+import { CrmView } from "./crm-view";
+import { JobsView } from "./jobs-view";
 
 export const WORKSPACE_OPTIONS: { slug: WorkspaceSlug; label: string; dot: string }[] = [
   { slug: "unified", label: "Unified (All Workspaces)", dot: "bg-purple-500" },
@@ -102,6 +106,7 @@ const moduleIcons: Record<ModuleKey, LucideIcon> = {
   journal: BookOpen,
   finance: CircleDollarSign,
   crm: Users,
+  jobs: Briefcase,
   school: Building2,
   ngo: Sparkles,
   contacts: Contact,
@@ -416,6 +421,12 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
               <ModuleHeader definition={definition} />
               <SettingsPage />
             </>
+          ) : module === "finance" ? (
+            <FinanceView />
+          ) : module === "crm" ? (
+            <CrmView />
+          ) : module === "jobs" ? (
+            <JobsView />
           ) : (
             <ModulePage
               definition={definition}

@@ -15,6 +15,7 @@ export const modules: ModuleDefinition[] = [
   { key: "journal", label: "Journal", description: "Wins, lessons, reviews, mood", accent: "bg-orange-500" },
   { key: "finance", label: "Finance", description: "Income, expenses, budgets", accent: "bg-green-600" },
   { key: "crm", label: "CRM", description: "Leads, clients, proposals", accent: "bg-fuchsia-500" },
+  { key: "jobs", label: "Jobs", description: "Job applications, interview rounds, offers", accent: "bg-indigo-600" },
   { key: "school", label: "School CRM", description: "Schools, demos, follow-ups", accent: "bg-purple-500" },
   { key: "ngo", label: "NGO", description: "Projects, volunteers, reports", accent: "bg-red-500" },
   { key: "contacts", label: "Contacts", description: "People and interaction history", accent: "bg-neutral-500" },

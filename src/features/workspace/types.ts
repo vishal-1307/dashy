@@ -13,6 +13,7 @@ export type ModuleKey =
   | "journal"
   | "finance"
   | "crm"
+  | "jobs"
   | "school"
   | "ngo"
   | "contacts"

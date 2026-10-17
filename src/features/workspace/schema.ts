@@ -16,6 +16,7 @@ export const moduleKeySchema = z.enum([
   "journal",
   "finance",
   "crm",
+  "jobs",
   "school",
   "ngo",
   "contacts",
