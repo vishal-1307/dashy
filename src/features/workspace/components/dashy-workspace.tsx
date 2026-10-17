@@ -84,6 +84,7 @@ import { JobsView } from "./jobs-view";
 import { NotesView } from "./notes-view";
 import { DocumentsView } from "./documents-view";
 import { CalendarView } from "./calendar-view";
+import { AiDrawer } from "./ai-drawer";
 import { useWorkspaceScheduler } from "../hooks/use-workspace-scheduler";
 
 export const WORKSPACE_OPTIONS: { slug: WorkspaceSlug; label: string; dot: string }[] = [
@@ -148,6 +149,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
   const [customizing, setCustomizing] = useState(false);
   const [lockChecked, setLockChecked] = useState(false);
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [draft, setDraft] = useState<CaptureDraft>({
     title: "",
     description: "",
@@ -200,10 +202,15 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
         event.preventDefault();
         setCaptureOpen(true);
       }
+      if ((event.ctrlKey || event.metaKey) && event.key === "/") {
+        event.preventDefault();
+        setAiOpen((v) => !v);
+      }
       if (event.key === "Escape") {
         setCommandOpen(false);
         setCaptureOpen(false);
         setCustomizing(false);
+        setAiOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -408,7 +415,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
       <Toaster richColors position="top-right" />
       <Sidebar module={module} />
       <div className="app-main">
-        <Topbar onLock={lockWorkspace} />
+        <Topbar onLock={lockWorkspace} onOpenAi={() => setAiOpen(true)} />
         <div className="page-wrap" id="main-content">
           {module === "dashboard" ? (
             <Dashboard
@@ -480,6 +487,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
           router.push(`/${item.module}`);
         }}
       />
+      <AiDrawer open={aiOpen} onClose={() => setAiOpen(false)} />
       <BottomNav module={module} />
     </main>
   );
@@ -579,7 +587,7 @@ function BottomNav({ module }: { module: ModuleKey }) {
   );
 }
 
-function Topbar({ onLock }: { onLock: () => void }) {
+function Topbar({ onLock, onOpenAi }: { onLock: () => void; onOpenAi: () => void }) {
   const store = useWorkspaceStore();
   const nextTheme = store.theme === "light" ? "dark" : store.theme === "dark" ? "system" : "light";
   return (
@@ -605,6 +613,7 @@ function Topbar({ onLock }: { onLock: () => void }) {
         <kbd>Ctrl K</kbd>
       </button>
       <div className="topbar__actions">
+        <IconButton label="AI Co-Pilot (Ctrl+/)" onClick={onOpenAi}><Sparkles /></IconButton>
         <IconButton label="Lock workspace" onClick={onLock}><Lock /></IconButton>
         <IconButton label={`Theme: ${store.theme}`} onClick={() => store.setTheme(nextTheme)}>
           {store.theme === "dark" ? <Moon /> : store.theme === "light" ? <Sun /> : <Settings />}
