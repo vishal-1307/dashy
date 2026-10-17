@@ -8,15 +8,36 @@ export class UnauthenticatedError extends Error {
   }
 }
 
+export class UnauthorizedOwnerError extends Error {
+  constructor() {
+    super("Access restricted to authorized owner only.");
+    this.name = "UnauthorizedOwnerError";
+  }
+}
+
 /**
- * Resolves the current user id from the request's session cookie, verified
- * server-side against the database. Never accept a userId from the client —
- * every Task/Project query must be scoped by this value.
+ * Validates the authenticated session and asserts that the session belongs
+ * to the authorized Dashy owner (matching OWNER_EMAIL).
  */
-export async function requireUserId(): Promise<string> {
+export async function requireOwnerSession(): Promise<{ userId: string; email: string }> {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) {
+  if (!session?.user) {
     throw new UnauthenticatedError();
   }
-  return session.user.id;
+
+  const configuredOwner = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  if (configuredOwner && session.user.email?.trim().toLowerCase() !== configuredOwner) {
+    throw new UnauthorizedOwnerError();
+  }
+
+  return { userId: session.user.id, email: session.user.email };
+}
+
+/**
+ * Resolves the current owner's user id from the request's session cookie, verified
+ * server-side against the database and owner configuration.
+ */
+export async function requireUserId(): Promise<string> {
+  const { userId } = await requireOwnerSession();
+  return userId;
 }

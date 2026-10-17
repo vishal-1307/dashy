@@ -29,11 +29,33 @@ export type ItemStatus =
   | "done"
   | "archived";
 
+export type WorkspaceSlug =
+  | "unified"
+  | "freelance-software"
+  | "dkom"
+  | "diamond-jewellers"
+  | "mithila-kritikala"
+  | "personal";
+
+export type Subtask = {
+  id: string;
+  title: string;
+  completed: boolean;
+};
+
+export type Milestone = {
+  id: string;
+  title: string;
+  completed: boolean;
+  dueDate?: string;
+};
+
 export type ThemeMode = "light" | "dark" | "system";
 
 export type WorkspaceItem = {
   id: string;
   module: ModuleKey;
+  workspace?: WorkspaceSlug;
   title: string;
   description: string;
   status: ItemStatus;
@@ -42,6 +64,29 @@ export type WorkspaceItem = {
   progress: number;
   tags: string[];
   linkedProject?: string;
+  subtasks?: Subtask[];
+  milestones?: Milestone[];
+  blockers?: string[];
+  nextAction?: string;
+  timeEstimateMinutes?: number;
+  timeSpentMinutes?: number;
+  dealValue?: number;
+  clientStage?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  nextFollowUpAt?: string;
+  invoiceNumber?: string;
+  totalAmount?: number;
+  amountPaid?: number;
+  outstandingBalance?: number;
+  jobCompany?: string;
+  jobRole?: string;
+  jobStage?: string;
+  jobSalary?: string;
+  calendarStartAt?: string;
+  calendarEndAt?: string;
+  noteContent?: string;
+  folder?: string;
   /** Status the item had before it was archived, so restore can put it back. */
   previousStatus?: ItemStatus;
   createdAt: string;
@@ -67,6 +112,7 @@ export type ModuleDefinition = {
 
 export type QuickCaptureInput = {
   module: ModuleKey;
+  workspace?: WorkspaceSlug;
   title: string;
   description?: string;
   priority?: Priority;

@@ -73,10 +73,19 @@ import { quickCaptureSchema } from "../schema";
 import { hasPasscode } from "../security";
 import { DB_BACKED_MODULES, useWorkspaceStore } from "../store";
 import { track } from "@/shared/lib/analytics";
-import type { ItemStatus, ModuleKey, Priority, WorkspaceItem } from "../types";
+import type { ItemStatus, ModuleKey, Priority, WorkspaceItem, WorkspaceSlug } from "../types";
 import { cn } from "@/shared/lib/utils";
 import { LockScreen } from "./lock-screen";
 import { SettingsPage } from "./settings-page";
+
+export const WORKSPACE_OPTIONS: { slug: WorkspaceSlug; label: string; dot: string }[] = [
+  { slug: "unified", label: "Unified (All Workspaces)", dot: "bg-purple-500" },
+  { slug: "freelance-software", label: "Freelance & Software", dot: "bg-blue-600" },
+  { slug: "dkom", label: "DKOM (Art & Wear)", dot: "bg-rose-600" },
+  { slug: "diamond-jewellers", label: "Diamond Jewellers", dot: "bg-amber-600" },
+  { slug: "mithila-kritikala", label: "Mithila KritiKala", dot: "bg-emerald-600" },
+  { slug: "personal", label: "Personal", dot: "bg-indigo-600" }
+];
 
 const moduleIcons: Record<ModuleKey, LucideIcon> = {
   dashboard: Home,
@@ -109,6 +118,7 @@ type CaptureDraft = {
   title: string;
   description: string;
   module: ModuleKey;
+  workspace?: WorkspaceSlug;
   priority: Priority;
   dueDate: string;
 };
@@ -207,6 +217,10 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
       store.items
         .filter((item) => item.status !== "archived")
         .filter((item) => {
+          if (store.activeWorkspace === "unified") return true;
+          return (item.workspace ?? "freelance-software") === store.activeWorkspace;
+        })
+        .filter((item) => {
           const query = store.query.trim().toLowerCase();
           return (
             !query ||
@@ -217,7 +231,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
           );
         })
         .sort((a, b) => priorityRank[b.priority] - priorityRank[a.priority]),
-    [store.items, store.query]
+    [store.items, store.activeWorkspace, store.query]
   );
   const definition = modules.find((item) => item.key === module) ?? modules[0];
   const moduleItems = activeItems.filter((item) => item.module === module);
@@ -242,8 +256,18 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
       toast.error(parsed.error.issues[0]?.message ?? "Check the form and try again");
       return;
     }
-    const item = store.createItem(parsed.data);
-    setDraft({ title: "", description: "", module: draft.module, priority: "medium", dueDate: "" });
+    const item = store.createItem({
+      ...parsed.data,
+      workspace: draft.workspace ?? (store.activeWorkspace === "unified" ? "freelance-software" : store.activeWorkspace)
+    });
+    setDraft({
+      title: "",
+      description: "",
+      module: draft.module,
+      workspace: store.activeWorkspace === "unified" ? "freelance-software" : store.activeWorkspace,
+      priority: "medium",
+      dueDate: ""
+    });
     store.setCaptureOpen(false);
     toast.success("Added to Dashy");
     router.push(`/${item.module}`);
@@ -538,6 +562,20 @@ function Topbar({ onLock }: { onLock: () => void }) {
   return (
     <header className="topbar">
       <IconButton label="Open sidebar" className="mobile-only" onClick={() => store.setSidebarOpen(true)}><Menu /></IconButton>
+      <div className="workspace-selector-wrap">
+        <select
+          aria-label="Active workspace"
+          className="workspace-selector"
+          value={store.activeWorkspace}
+          onChange={(e) => store.setActiveWorkspace(e.target.value as WorkspaceSlug)}
+        >
+          {WORKSPACE_OPTIONS.map((opt) => (
+            <option key={opt.slug} value={opt.slug}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <button className="search-command" onClick={() => store.setCommandOpen(true)}>
         <Search />
         <span>Search or run a command</span>
@@ -738,6 +776,7 @@ function ModulePage({
   onRestore: (id: string) => void;
 }) {
   const Icon = moduleIcons[definition.key];
+  const [taskViewMode, setTaskViewMode] = useState<"list" | "kanban">("list");
   const archivedForModule = archivedItems.filter((item) => item.module === definition.key);
   const deviceOnly = !DB_BACKED_MODULES.includes(definition.key) && definition.key !== "settings";
   const today = localDateString();
@@ -751,6 +790,13 @@ function ModulePage({
           { key: "done", label: "Completed", items: items.filter((item) => item.status === "done") }
         ].filter((group) => group.items.length)
       : null;
+
+  const kanbanColumns: { key: ItemStatus; label: string }[] = [
+    { key: "planned", label: "Planned" },
+    { key: "active", label: "Active" },
+    { key: "waiting", label: "Waiting" },
+    { key: "done", label: "Done" }
+  ];
 
   return (
     <>
@@ -768,7 +814,53 @@ function ModulePage({
           </span>
         ) : null}
       </section>
-      {groups ? (
+
+      {definition.key === "tasks" ? (
+        <div className="view-toggle-bar">
+          <div className="segmented">
+            <button
+              type="button"
+              className={cn("segmented__option", taskViewMode === "list" && "segmented__option--active")}
+              onClick={() => setTaskViewMode("list")}
+            >
+              List View
+            </button>
+            <button
+              type="button"
+              className={cn("segmented__option", taskViewMode === "kanban" && "segmented__option--active")}
+              onClick={() => setTaskViewMode("kanban")}
+            >
+              Kanban Board
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {definition.key === "tasks" && taskViewMode === "kanban" ? (
+        <div className="kanban-grid">
+          {kanbanColumns.map((col) => {
+            const colItems = items.filter((it) => it.status === col.key);
+            return (
+              <div key={col.key} className="kanban-col">
+                <div className="kanban-col__head">
+                  <h3>{col.label}</h3>
+                  <span className="kanban-col__count">{colItems.length}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  {colItems.map((item) => (
+                    <ItemCard key={item.id} item={item} onUpdate={onUpdate} onArchive={onArchive} onDelete={onDelete} />
+                  ))}
+                  {colItems.length === 0 ? (
+                    <div style={{ padding: "1.5rem", textAlign: "center", color: "rgb(var(--muted))", fontSize: "0.75rem" }}>
+                      No {col.label.toLowerCase()} tasks
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : groups ? (
         groups.length ? (
           groups.map((group) => (
             <section className="task-group" key={group.key}>
@@ -815,6 +907,60 @@ function ItemCard({ item, onUpdate, onArchive, onDelete }: {
 }) {
   const done = item.status === "done";
   const overdue = !done && item.dueDate && item.dueDate < localDateString();
+  const wsInfo = WORKSPACE_OPTIONS.find((w) => w.slug === (item.workspace ?? "freelance-software"));
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [newBlocker, setNewBlocker] = useState("");
+
+  const handleToggleSubtask = (subtaskId: string) => {
+    const currentSubtasks = item.subtasks ?? [];
+    const updated = currentSubtasks.map((st) =>
+      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+    );
+    const completedCount = updated.filter((st) => st.completed).length;
+    const progress = updated.length > 0 ? Math.round((completedCount / updated.length) * 100) : item.progress;
+    const isAllDone = updated.length > 0 && completedCount === updated.length;
+    onUpdate(item.id, {
+      subtasks: updated,
+      progress,
+      status: isAllDone ? "done" : item.status === "done" ? "active" : item.status
+    });
+  };
+
+  const handleAddSubtask = () => {
+    if (!newSubtaskTitle.trim()) return;
+    const currentSubtasks = item.subtasks ?? [];
+    const updated = [
+      ...currentSubtasks,
+      { id: `st_${Date.now()}`, title: newSubtaskTitle.trim(), completed: false }
+    ];
+    const completedCount = updated.filter((st) => st.completed).length;
+    const progress = Math.round((completedCount / updated.length) * 100);
+    onUpdate(item.id, { subtasks: updated, progress });
+    setNewSubtaskTitle("");
+  };
+
+  const handleToggleMilestone = (milestoneId: string) => {
+    const currentMilestones = item.milestones ?? [];
+    const updated = currentMilestones.map((m) =>
+      m.id === milestoneId ? { ...m, completed: !m.completed } : m
+    );
+    const completedCount = updated.filter((m) => m.completed).length;
+    const progress = updated.length > 0 ? Math.round((completedCount / updated.length) * 100) : item.progress;
+    onUpdate(item.id, { milestones: updated, progress });
+  };
+
+  const handleAddBlocker = () => {
+    if (!newBlocker.trim()) return;
+    const currentBlockers = item.blockers ?? [];
+    onUpdate(item.id, { blockers: [...currentBlockers, newBlocker.trim()] });
+    setNewBlocker("");
+  };
+
+  const handleRemoveBlocker = (idx: number) => {
+    const currentBlockers = item.blockers ?? [];
+    onUpdate(item.id, { blockers: currentBlockers.filter((_, i) => i !== idx) });
+  };
+
   return (
     <article className={cn("item-card", done && "item-card--done")}>
       <div className="item-card__head">
@@ -829,6 +975,11 @@ function ItemCard({ item, onUpdate, onArchive, onDelete }: {
           </button>
           <span className={cn("priority", `priority--${item.priority}`)}>{item.priority}</span>
           {overdue ? <span className="overdue-badge">Overdue</span> : null}
+          {wsInfo && wsInfo.slug !== "unified" ? (
+            <span className={cn("workspace-pill-badge", wsInfo.dot)} title={wsInfo.label}>
+              {wsInfo.label.split(" ")[0]}
+            </span>
+          ) : null}
         </div>
         <div><IconButton label="Archive" onClick={() => onArchive(item.id)}><Archive /></IconButton><IconButton label="Delete" onClick={() => onDelete(item.id)}><Trash2 /></IconButton></div>
       </div>
@@ -836,6 +987,72 @@ function ItemCard({ item, onUpdate, onArchive, onDelete }: {
       <textarea value={item.description} onChange={(event) => onUpdate(item.id, { description: event.target.value })} />
       <div className="progress-line"><span style={{ width: `${item.progress}%` }} /></div>
       <input aria-label="Progress" type="range" min={0} max={100} value={item.progress} onChange={(event) => onUpdate(item.id, { progress: Number(event.target.value) })} />
+
+      {item.module === "tasks" ? (
+        <div className="subtask-section">
+          <div className="subtask-section__head">
+            <span>Subtasks ({item.subtasks?.filter((s) => s.completed).length ?? 0}/{item.subtasks?.length ?? 0})</span>
+          </div>
+          {item.subtasks?.map((st) => (
+            <div key={st.id} className={cn("subtask-item", st.completed && "subtask-item--done")}>
+              <input
+                type="checkbox"
+                checked={st.completed}
+                onChange={() => handleToggleSubtask(st.id)}
+              />
+              <span>{st.title}</span>
+            </div>
+          ))}
+          <div className="subtask-add">
+            <input
+              placeholder="Add subtask..."
+              value={newSubtaskTitle}
+              onChange={(e) => setNewSubtaskTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSubtask(); } }}
+            />
+            <button type="button" onClick={handleAddSubtask}>+ Add</button>
+          </div>
+        </div>
+      ) : null}
+
+      {item.module === "projects" ? (
+        <div className="project-meta-section">
+          {item.nextAction ? (
+            <span className="next-action-pill">👉 Next: {item.nextAction}</span>
+          ) : null}
+          {item.blockers && item.blockers.length > 0 ? (
+            <div style={{ margin: "0.4rem 0" }}>
+              {item.blockers.map((blocker, bIdx) => (
+                <span key={bIdx} className="blocker-badge">
+                  ⚠️ {blocker}
+                  <button type="button" onClick={() => handleRemoveBlocker(bIdx)} style={{ background: "transparent", border: 0, cursor: "pointer", color: "inherit", marginLeft: "0.2rem" }}>×</button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="subtask-add" style={{ marginTop: "0.3rem" }}>
+            <input
+              placeholder="Add blocker..."
+              value={newBlocker}
+              onChange={(e) => setNewBlocker(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddBlocker(); } }}
+            />
+            <button type="button" onClick={handleAddBlocker}>+ Blocker</button>
+          </div>
+          {item.milestones && item.milestones.length > 0 ? (
+            <div style={{ marginTop: "0.5rem" }}>
+              <p style={{ fontSize: "0.7rem", fontWeight: 600, color: "rgb(var(--muted))", marginBottom: "0.25rem" }}>Milestones:</p>
+              {item.milestones.map((m) => (
+                <div key={m.id} className={cn("subtask-item", m.completed && "subtask-item--done")}>
+                  <input type="checkbox" checked={m.completed} onChange={() => handleToggleMilestone(m.id)} />
+                  <span>{m.title}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="item-card__controls">
         <select value={item.status} onChange={(event) => onUpdate(item.id, { status: event.target.value as ItemStatus })}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select>
         <select value={item.priority} onChange={(event) => onUpdate(item.id, { priority: event.target.value as Priority })}>{priorityOptions.map((priority) => <option key={priority}>{priority}</option>)}</select>
@@ -888,9 +1105,21 @@ function CaptureDialog({ open, draft, onChange, onClose, onCreate }: {
       <label>Notes<textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} /></label>
       <div className="form-grid">
         <label>Area<select value={draft.module} onChange={(event) => onChange({ ...draft, module: event.target.value as ModuleKey })}>{modules.filter((item) => item.key !== "dashboard").map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}</select></label>
-        <label>Priority<select value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as Priority })}>{priorityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Workspace
+          <select
+            value={draft.workspace ?? "freelance-software"}
+            onChange={(event) => onChange({ ...draft, workspace: event.target.value as WorkspaceSlug })}
+          >
+            {WORKSPACE_OPTIONS.filter((w) => w.slug !== "unified").map((w) => (
+              <option key={w.slug} value={w.slug}>{w.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
-      <label>Due date<input type="date" value={draft.dueDate} onChange={(event) => onChange({ ...draft, dueDate: event.target.value })} /></label>
+      <div className="form-grid">
+        <label>Priority<select value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as Priority })}>{priorityOptions.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>Due date<input type="date" value={draft.dueDate} onChange={(event) => onChange({ ...draft, dueDate: event.target.value })} /></label>
+      </div>
       <button className="primary-button primary-button--full" onClick={onCreate}><Plus /> Add item</button>
     </motion.section>
   </motion.div> : null}</AnimatePresence>;

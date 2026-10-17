@@ -25,6 +25,23 @@ const authRateLimitRules = {
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+          if (ownerEmail && user.email?.trim().toLowerCase() !== ownerEmail) {
+            throw new Error("Unauthorized: Only the designated owner may register.");
+          }
+          const userCount = await prisma.user.count();
+          if (userCount >= 1) {
+            throw new Error("Registration is permanently closed.");
+          }
+          return { data: user };
+        }
+      }
+    }
+  },
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
   emailAndPassword: {

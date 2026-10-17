@@ -25,8 +25,31 @@ export const moduleKeySchema = z.enum([
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date");
 
+export const workspaceSlugSchema = z.enum([
+  "unified",
+  "freelance-software",
+  "dkom",
+  "diamond-jewellers",
+  "mithila-kritikala",
+  "personal"
+]);
+
+export const subtaskSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(200),
+  completed: z.boolean()
+});
+
+export const milestoneSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(200),
+  completed: z.boolean(),
+  dueDate: isoDate.optional()
+});
+
 export const quickCaptureSchema = z.object({
   module: moduleKeySchema,
+  workspace: workspaceSlugSchema.optional(),
   title: z.string().trim().min(1, "Add a title first").max(160, "Keep the title under 160 characters"),
   description: z.string().trim().max(4000, "Notes are limited to 4000 characters").optional(),
   priority: prioritySchema.default("medium"),
@@ -39,6 +62,7 @@ export type QuickCapturePayload = z.infer<typeof quickCaptureSchema>;
 export const workspaceItemSchema = z.object({
   id: z.string().min(1).max(120),
   module: moduleKeySchema,
+  workspace: workspaceSlugSchema.optional(),
   title: z.string().max(300),
   description: z.string().max(10000),
   status: itemStatusSchema,
@@ -47,6 +71,27 @@ export const workspaceItemSchema = z.object({
   progress: z.number().min(0).max(100),
   tags: z.array(z.string().max(60)).max(50),
   linkedProject: z.string().max(300).optional(),
+  subtasks: z.array(subtaskSchema).optional(),
+  milestones: z.array(milestoneSchema).optional(),
+  blockers: z.array(z.string()).optional(),
+  nextAction: z.string().optional(),
+  dealValue: z.number().optional(),
+  clientStage: z.string().optional(),
+  contactEmail: z.string().optional(),
+  contactPhone: z.string().optional(),
+  nextFollowUpAt: z.string().optional(),
+  invoiceNumber: z.string().optional(),
+  totalAmount: z.number().optional(),
+  amountPaid: z.number().optional(),
+  outstandingBalance: z.number().optional(),
+  jobCompany: z.string().optional(),
+  jobRole: z.string().optional(),
+  jobStage: z.string().optional(),
+  jobSalary: z.string().optional(),
+  calendarStartAt: z.string().optional(),
+  calendarEndAt: z.string().optional(),
+  noteContent: z.string().optional(),
+  folder: z.string().optional(),
   previousStatus: itemStatusSchema.optional(),
   createdAt: z.string().max(40),
   updatedAt: z.string().max(40)
@@ -69,6 +114,11 @@ export const serverUpdateSchema = z.object({
   priority: prioritySchema.optional(),
   dueDate: isoDate.nullable().optional(),
   progress: z.number().min(0).max(100).optional(),
+  workspace: workspaceSlugSchema.optional(),
+  subtasks: z.array(subtaskSchema).optional(),
+  milestones: z.array(milestoneSchema).optional(),
+  blockers: z.array(z.string()).optional(),
+  nextAction: z.string().optional(),
   previousStatus: itemStatusSchema.nullable().optional()
 });
 

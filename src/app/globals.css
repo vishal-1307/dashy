@@ -172,6 +172,42 @@ svg { width: 1.05rem; height: 1.05rem; stroke-width: 1.8; }
   z-index: 20;
 }
 .topbar__actions { align-items: center; display: flex; gap: .5rem; }
+
+/* ---------- Workspace Switcher ---------- */
+.workspace-selector-wrap {
+  align-items: center;
+  display: flex;
+}
+.workspace-selector {
+  appearance: none;
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--border));
+  border-radius: 999px;
+  color: rgb(var(--foreground));
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 600;
+  padding: .45rem 1.1rem;
+  box-shadow: var(--shadow-sm);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.workspace-selector:hover, .workspace-selector:focus {
+  border-color: rgb(var(--accent));
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+.workspace-badge {
+  align-items: center;
+  background: rgba(99, 102, 241, .14);
+  border-radius: 999px;
+  color: rgb(99, 102, 241);
+  display: inline-flex;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: .15rem .5rem;
+  text-transform: uppercase;
+}
 .search-command {
   align-items: center;
   background: rgb(var(--surface));
@@ -468,6 +504,151 @@ kbd {
   padding: 0 .45rem;
   text-transform: capitalize;
 }
+
+/* ---------- Workspace Badges & Subtasks & Milestones ---------- */
+.workspace-pill-badge {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: .15rem .5rem;
+  text-transform: uppercase;
+  color: white;
+}
+.bg-purple-500 { background: #8b5cf6; }
+.bg-blue-600 { background: #2563eb; }
+.bg-rose-600 { background: #e11d48; }
+.bg-amber-600 { background: #d97706; }
+.bg-emerald-600 { background: #059669; }
+.bg-indigo-600 { background: #4f46e5; }
+
+.subtask-section {
+  border-top: 1px dashed rgb(var(--border));
+  margin: .8rem 0 .4rem;
+  padding-top: .6rem;
+}
+.subtask-section__head {
+  align-items: center;
+  display: flex;
+  font-size: .72rem;
+  font-weight: 600;
+  justify-content: space-between;
+  margin-bottom: .4rem;
+  color: rgb(var(--muted));
+}
+.subtask-item {
+  align-items: center;
+  display: flex;
+  font-size: .75rem;
+  gap: .4rem;
+  margin-bottom: .3rem;
+}
+.subtask-item--done span {
+  text-decoration: line-through;
+  color: rgb(var(--muted));
+}
+.subtask-add {
+  display: flex;
+  gap: .3rem;
+  margin-top: .4rem;
+}
+.subtask-add input {
+  background: rgb(var(--surface-strong));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-sm);
+  font-size: .72rem;
+  padding: .25rem .5rem;
+  flex: 1;
+  color: rgb(var(--foreground));
+}
+.subtask-add button {
+  background: rgb(var(--accent-soft));
+  color: rgb(var(--accent));
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .25rem .55rem;
+  cursor: pointer;
+}
+
+/* Project milestones & blockers */
+.project-meta-section {
+  border-top: 1px dashed rgb(var(--border));
+  margin: .8rem 0 .4rem;
+  padding-top: .6rem;
+  font-size: .75rem;
+}
+.blocker-badge {
+  background: rgba(var(--danger), .15);
+  color: rgb(var(--danger));
+  border-radius: var(--radius-sm);
+  font-size: .68rem;
+  font-weight: 600;
+  padding: .2rem .4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  margin: .2rem .2rem .2rem 0;
+}
+.next-action-pill {
+  background: rgba(var(--accent), .12);
+  color: rgb(var(--accent));
+  border-radius: var(--radius-sm);
+  font-size: .7rem;
+  font-weight: 600;
+  padding: .25rem .5rem;
+  margin-top: .4rem;
+  display: block;
+}
+
+/* Kanban Board */
+.view-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: 1rem;
+}
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.kanban-col {
+  background: rgb(var(--surface-strong));
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-lg);
+  padding: .85rem;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  min-height: 20rem;
+}
+.kanban-col__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: .4rem;
+  border-bottom: 1px solid rgb(var(--border));
+}
+.kanban-col__head h3 {
+  font-size: .84rem;
+  font-weight: 700;
+  margin: 0;
+  text-transform: capitalize;
+}
+.kanban-col__count {
+  background: rgb(var(--surface));
+  border-radius: 999px;
+  font-size: .65rem;
+  font-weight: 700;
+  padding: .1rem .45rem;
+  color: rgb(var(--muted));
+}
+
 .archive-section { margin-top: 3rem; max-width: 50rem; }
 .archive-row {
   align-items: center;

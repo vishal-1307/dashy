@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { createProject, deleteProject, listProjects, restoreProject, updateProject } from "@/server/actions/projects";
 import { createTask, deleteTask, listTasks, restoreTask, updateTask } from "@/server/actions/tasks";
 import { track } from "@/shared/lib/analytics";
-import type { ItemStatus, ModuleKey, QuickCaptureInput, ThemeMode, WorkspaceExport, WorkspaceItem } from "./types";
+import type { ItemStatus, ModuleKey, QuickCaptureInput, ThemeMode, WorkspaceExport, WorkspaceItem, WorkspaceSlug } from "./types";
 
 export const FOCUS_SESSION_SECONDS = 25 * 60;
 
@@ -44,6 +44,7 @@ type DeletedEntry = {
 
 type WorkspaceState = {
   activeModule: ModuleKey;
+  activeWorkspace: WorkspaceSlug;
   items: WorkspaceItem[];
   query: string;
   focusMode: boolean;
@@ -66,6 +67,7 @@ type WorkspaceState = {
   /** Guards against re-fetching on every re-render. Not persisted. */
   hasHydrated: boolean;
   setActiveModule: (module: ModuleKey) => void;
+  setActiveWorkspace: (workspace: WorkspaceSlug) => void;
   setQuery: (query: string) => void;
   setFocusMode: (value: boolean) => void;
   setSidebarOpen: (value: boolean) => void;
@@ -136,6 +138,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
       activeModule: "dashboard",
+      activeWorkspace: "unified",
       items: [],
       query: "",
       focusMode: false,
@@ -153,6 +156,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       legacyImportCandidateIds: [],
       hasHydrated: false,
       setActiveModule: (module) => set({ activeModule: module }),
+      setActiveWorkspace: (workspace) => set({ activeWorkspace: workspace }),
       setQuery: (query) => set({ query }),
       setFocusMode: (value) => set({ focusMode: value }),
       setSidebarOpen: (value) => set({ sidebarOpen: value }),
@@ -213,9 +217,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
       createItem: (input) => {
         const timestamp = new Date().toISOString();
+        const currentWs = get().activeWorkspace;
+        const assignedWorkspace = input.workspace ?? (currentWs === "unified" ? "freelance-software" : currentWs);
         const item: WorkspaceItem = {
           id: uid(),
           module: input.module,
+          workspace: assignedWorkspace,
           title: input.title.trim(),
           description: input.description?.trim() ?? "",
           priority: input.priority ?? "medium",
@@ -488,6 +495,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       partialize: (state) => ({
         items: state.items,
         theme: state.theme,
+        activeWorkspace: state.activeWorkspace,
         dashboardOrder: state.dashboardOrder,
         dashboardVisibleIds: state.dashboardVisibleIds,
         hiddenModules: state.hiddenModules,
