@@ -7,12 +7,20 @@ import { verifyPasscode } from "../security";
 
 const MAX_ATTEMPTS_BEFORE_DELAY = 5;
 const DELAY_SECONDS = 30;
+const ATTEMPTS_KEY = "dashy_lock_attempts";
+const LOCKED_UNTIL_KEY = "dashy_lock_until";
 
 export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = sessionStorage.getItem(LOCKED_UNTIL_KEY);
+    if (!stored) return null;
+    const val = Number(stored);
+    return !isNaN(val) && val > Date.now() ? val : null;
+  });
   const attempts = useRef(0);
 
   const submit = async (event: FormEvent) => {
@@ -26,14 +34,26 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
     const valid = await verifyPasscode(passcode);
     setChecking(false);
     if (valid) {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(ATTEMPTS_KEY);
+        sessionStorage.removeItem(LOCKED_UNTIL_KEY);
+      }
       onUnlock();
       return;
     }
     attempts.current += 1;
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(ATTEMPTS_KEY, String(attempts.current));
+    }
     setPasscode("");
     if (attempts.current >= MAX_ATTEMPTS_BEFORE_DELAY) {
       attempts.current = 0;
-      setLockedUntil(Date.now() + DELAY_SECONDS * 1000);
+      const until = Date.now() + DELAY_SECONDS * 1000;
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(ATTEMPTS_KEY, "0");
+        sessionStorage.setItem(LOCKED_UNTIL_KEY, String(until));
+      }
+      setLockedUntil(until);
       setError(`Too many attempts. Wait ${DELAY_SECONDS}s before trying again.`);
     } else {
       setError("Wrong passcode. Try again.");
@@ -41,7 +61,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   };
 
   return (
-    <main className="lock-screen">
+    <main className="lock-screen" id="main-content">
       <form className="lock-card" onSubmit={submit}>
         <span className="brand__mark brand__mark--lg">D</span>
         <h1>Dashy is locked</h1>

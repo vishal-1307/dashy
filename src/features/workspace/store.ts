@@ -244,14 +244,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             priority: item.priority,
             dueDate: item.dueDate,
             tags: []
-          }).catch(() => {
-            set({
-              items: get().items.filter((entry) => entry.id !== item.id),
-              dashboardOrder: get().dashboardOrder.filter((entryId) => entryId !== item.id),
-              dashboardVisibleIds: get().dashboardVisibleIds.filter((entryId) => entryId !== item.id)
+          })
+            .then((serverItem) => {
+              if (serverItem && serverItem.id !== item.id) {
+                set({
+                  items: get().items.map((entry) => (entry.id === item.id ? serverItem : entry)),
+                  dashboardOrder: get().dashboardOrder.map((id) => (id === item.id ? serverItem.id : id)),
+                  dashboardVisibleIds: get().dashboardVisibleIds.map((id) => (id === item.id ? serverItem.id : id))
+                });
+              }
+            })
+            .catch(() => {
+              set({
+                items: get().items.filter((entry) => entry.id !== item.id),
+                dashboardOrder: get().dashboardOrder.filter((entryId) => entryId !== item.id),
+                dashboardVisibleIds: get().dashboardVisibleIds.filter((entryId) => entryId !== item.id)
+              });
+              toast.error(`Could not save "${item.title}" — removed.`);
             });
-            toast.error(`Could not save "${item.title}" — removed.`);
-          });
         }
 
         return item;
@@ -287,14 +297,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         pendingUpdateTimers.set(
           id,
           setTimeout(() => {
-            const module = get().items.find((item) => item.id === id)?.module ?? current.module;
+            const targetModule = get().items.find((item) => item.id === id)?.module ?? current.module;
             const snapshot = pendingUpdateSnapshots.get(id) ?? current;
             const finalPayload = pendingUpdatePayloads.get(id) ?? {};
             pendingUpdateTimers.delete(id);
             pendingUpdateSnapshots.delete(id);
             pendingUpdatePayloads.delete(id);
 
-            const { update } = actionsFor(module);
+            const { update } = actionsFor(targetModule);
             update(id, finalPayload).catch(() => {
               set({
                 items: get().items.map((item) => (item.id === id ? snapshot : item))
@@ -433,7 +443,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       dismissLegacyImport: () => set({ legacyImportPromptShown: true, legacyImportCandidateIds: [] }),
       resetForSignOut: () => {
         // Cancel queued/debounced server writes so nothing fires for the
-        // previous account after a different user signs in on this device.
+        // previous account after sign-out.
         for (const timer of pendingUpdateTimers.values()) {
           clearTimeout(timer);
         }
@@ -442,21 +452,29 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         pendingUpdatePayloads.clear();
         pendingDeletes.clear();
 
-        const state = get();
-        const remainingItems = state.items.filter((item) => !isDbBacked(item.module));
-        const remainingIds = new Set(remainingItems.map((item) => item.id));
+        // Clear in-memory session data completely to prevent cross-account leakage
         set({
-          items: remainingItems,
-          dashboardOrder: state.dashboardOrder.filter((id) => remainingIds.has(id)),
-          dashboardVisibleIds: state.dashboardVisibleIds.filter((id) => remainingIds.has(id)),
-          legacyImportPromptShown: false,
+          items: [],
+          dashboardOrder: [],
+          dashboardVisibleIds: [],
+          legacyImportPromptShown: true,
           legacyImportCandidateIds: [],
-          hasHydrated: false
+          hasHydrated: false,
+          unlocked: false
         });
+
+        // Clear authenticated session cache without touching legacy dashy-workspace-v1
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("dashy-session-cache-v2");
+          }
+        } catch {
+          // localStorage may be unavailable
+        }
       }
     }),
     {
-      name: "dashy-workspace-v1",
+      name: "dashy-session-cache-v2",
       version: 2,
       // Existing browsers (persisted before hiddenModules existed) keep every
       // module visible — the curated default only applies to brand-new users.
@@ -473,7 +491,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         dashboardOrder: state.dashboardOrder,
         dashboardVisibleIds: state.dashboardVisibleIds,
         hiddenModules: state.hiddenModules,
-        legacyImportPromptShown: state.legacyImportPromptShown
+        legacyImportPromptShown: true
       })
     }
   )

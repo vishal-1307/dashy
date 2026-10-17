@@ -142,10 +142,11 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
     setLockChecked(true);
   }, []);
 
+  const setActiveModule = store.setActiveModule;
   useEffect(() => {
-    store.setActiveModule(module);
+    setActiveModule(module);
     track("module_opened", { module });
-  }, [module, store.setActiveModule]);
+  }, [module, setActiveModule]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(new Date()), 60_000);
@@ -166,36 +167,40 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
     return () => media.removeEventListener("change", apply);
   }, [store.theme]);
 
+  const setCommandOpen = store.setCommandOpen;
+  const setCaptureOpen = store.setCaptureOpen;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        store.setCommandOpen(true);
+        setCommandOpen(true);
       }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space") {
         event.preventDefault();
-        store.setCaptureOpen(true);
+        setCaptureOpen(true);
       }
       if (event.key === "Escape") {
-        store.setCommandOpen(false);
-        store.setCaptureOpen(false);
+        setCommandOpen(false);
+        setCaptureOpen(false);
         setCustomizing(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [store.setCaptureOpen, store.setCommandOpen]);
+  }, [setCaptureOpen, setCommandOpen]);
 
+  const timerRunning = store.timerRunning;
+  const tickTimer = store.tickTimer;
   useEffect(() => {
-    if (!store.timerRunning) return;
+    if (!timerRunning) return;
     const interval = window.setInterval(() => {
-      store.tickTimer();
+      tickTimer();
       if (useWorkspaceStore.getState().timerSeconds === 0) {
         toast.success("Focus session complete");
       }
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [store.timerRunning, store.tickTimer]);
+  }, [timerRunning, tickTimer]);
 
   const activeItems = useMemo(
     () =>
@@ -331,7 +336,7 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
   if (store.focusMode) {
     const focusItem = activeItems.find((item) => item.status !== "done");
     return (
-      <main className="focus-stage">
+      <main className="focus-stage" id="main-content">
         <Toaster richColors position="top-right" />
         <div className="focus-stage__bar">
           <IconButton label="Exit focus" onClick={() => store.setFocusMode(false)}>

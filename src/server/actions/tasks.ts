@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { serverCreateSchema, serverUpdateSchema, workspaceItemSchema } from "@/features/workspace/schema";
 import type { WorkspaceItem } from "@/features/workspace/types";
 import { prisma } from "@/server/db/client";
@@ -23,7 +24,7 @@ export async function createTask(input: unknown): Promise<WorkspaceItem> {
 
   const task = await prisma.task.create({
     data: {
-      id: draft.id,
+      id: randomUUID(),
       userId,
       title: draft.title,
       description: draft.description || null,

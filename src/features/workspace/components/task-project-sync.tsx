@@ -4,13 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { CloudUpload } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "@/server/auth-client";
+import { hasPasscode } from "../security";
 import { useWorkspaceStore } from "../store";
 
 /**
  * Mounted once at the app root. Pulls this user's Tasks/Projects from the
- * database on first authenticated load and, if the browser still has
- * local-only Task/Project data from before auth existed, offers a one-time
- * import prompt rather than silently adopting or discarding it.
+ * database on first authenticated load once unlocked.
  */
 export function TaskProjectSync() {
   const { data: session } = useSession();
@@ -19,6 +18,7 @@ export function TaskProjectSync() {
   const dismissLegacyImport = useWorkspaceStore((state) => state.dismissLegacyImport);
   const candidateIds = useWorkspaceStore((state) => state.legacyImportCandidateIds);
   const items = useWorkspaceStore((state) => state.items);
+  const unlocked = useWorkspaceStore((state) => state.unlocked);
   const [importing, setImporting] = useState(false);
   // Keyed by user id: the root layout (and this component) survives
   // sign-out → sign-in as a different user, so a boolean would skip
@@ -28,11 +28,14 @@ export function TaskProjectSync() {
   useEffect(() => {
     const userId = session?.user?.id;
     if (!userId || hydratedForUser.current === userId) return;
+    // Do not hydrate while the app-lock screen is active
+    if (typeof window !== "undefined" && hasPasscode() && !unlocked) return;
+
     hydratedForUser.current = userId;
     hydrateFromServer().catch(() => {
       hydratedForUser.current = null;
     });
-  }, [session, hydrateFromServer]);
+  }, [session, hydrateFromServer, unlocked]);
 
   if (!session || candidateIds.length === 0) {
     return null;

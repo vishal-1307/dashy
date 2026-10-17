@@ -23,6 +23,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Never intercept or cache API routes (auth sessions, server endpoints)
+  if (url.pathname.startsWith("/api/")) return;
+
   // Navigations: try the network first so users always get fresh app code
   // when online, falling back to the cached shell when offline.
   if (request.mode === "navigate") {
