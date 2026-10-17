@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "../store";
-import { issueConfirmationToken, verifyConfirmationToken } from "@/server/ai/confirmation";
+import { createConfirmationTokenAction, verifyConfirmationTokenAction } from "@/server/actions/ai-actions";
 import type { AiChatMessage, AiConfirmationTokenData, AiProviderName, AiToolCall } from "@/server/ai/types";
 import { cn } from "@/shared/lib/utils";
 
@@ -89,7 +89,7 @@ Ask me for a morning briefing, to check your ₹10L goal progress, or to plan ne
       } else if (lower.includes("delete") && lower.includes("task")) {
         // Consequential action demo
         const toolArgs = { taskId: "task_sample_1", title: "Review sample invoice" };
-        const token = issueConfirmationToken("owner", "deleteTask", toolArgs);
+        const token = await createConfirmationTokenAction("deleteTask", toolArgs);
         simulatedToolCall = {
           id: `call_${Date.now()}`,
           name: "deleteTask",
@@ -119,10 +119,10 @@ Ask me for a morning briefing, to check your ₹10L goal progress, or to plan ne
     }
   };
 
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (!activeConfirmation) return;
     const { token, toolCall } = activeConfirmation;
-    const verify = verifyConfirmationToken(token, toolCall.arguments, "owner");
+    const verify = await verifyConfirmationTokenAction(token, toolCall.arguments);
     if (!verify.valid) {
       toast.error(`Confirmation failed: ${verify.reason}`);
       return;

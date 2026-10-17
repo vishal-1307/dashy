@@ -8,6 +8,10 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
 enum Priority {
   LOW
   MEDIUM
@@ -40,6 +44,35 @@ enum FinanceType {
   SAVING
 }
 
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum LeadStage {
+  LEAD
+  CONTACTED
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum JobStatus {
+  SAVED
+  APPLIED
+  SCREENING
+  TECHNICAL
+  INTERVIEW
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
 enum RecurrenceFrequency {
   NONE
   DAILY
@@ -59,47 +92,56 @@ enum NotificationType {
   GOAL
 }
 
+// ----------------------------------------------------
+// AUTHENTICATION & SINGLE-OWNER ACCESS
+// ----------------------------------------------------
+
 model User {
-  id               String               @id @default(cuid())
-  name             String
-  email            String               @unique
-  emailVerified    Boolean              @default(false)
-  image            String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  sessions         Session[]
-  accounts         Account[]
-  settings         UserSettings?
-  projects         Project[]
-  tasks            Task[]
-  milestones       Milestone[]
-  notes            Note[]
-  knowledgePages   KnowledgePage[]
-  ideas            Idea[]
-  documents        Document[]
-  files            FileAsset[]
-  calendarEvents   CalendarEvent[]
-  goals            Goal[]
-  habits           Habit[]
-  journalEntries   JournalEntry[]
-  learningItems    LearningItem[]
-  courses          Course[]
-  resources        Resource[]
-  transactions     FinanceTransaction[]
-  budgets          Budget[]
-  subscriptions    Subscription[]
-  crmLeads         CrmLead[]
-  schools          School[]
-  ngoProjects      NgoProject[]
-  volunteers       Volunteer[]
-  beneficiaries    Beneficiary[]
-  contacts         Contact[]
-  notifications    Notification[]
-  activityLogs     ActivityLog[]
-  comments         Comment[]
-  workSessions     WorkSession[]
-  pomodoroSessions PomodoroSession[]
-  tags             Tag[]
+  id                 String                @id @default(cuid())
+  name               String
+  email              String                @unique
+  emailVerified      Boolean               @default(false)
+  image              String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  sessions           Session[]
+  accounts           Account[]
+  settings           UserSettings?
+  workspaces         Workspace[]
+  projects           Project[]
+  tasks              Task[]
+  milestones         Milestone[]
+  notes              Note[]
+  knowledgePages     KnowledgePage[]
+  ideas              Idea[]
+  documents          Document[]
+  files              FileAsset[]
+  calendarEvents     CalendarEvent[]
+  goals              Goal[]
+  habits             Habit[]
+  journalEntries     JournalEntry[]
+  learningItems      LearningItem[]
+  courses            Course[]
+  resources          Resource[]
+  transactions       FinanceTransaction[]
+  budgets            Budget[]
+  subscriptions      Subscription[]
+  crmLeads           CrmLead[]
+  schools            School[]
+  ngoProjects        NgoProject[]
+  volunteers         Volunteer[]
+  beneficiaries      Beneficiary[]
+  contacts           Contact[]
+  notifications      Notification[]
+  activityLogs       ActivityLog[]
+  comments           Comment[]
+  workSessions       WorkSession[]
+  pomodoroSessions   PomodoroSession[]
+  tags               Tag[]
+  jobApplications    JobApplication[]
+  aiConversations    AiConversation[]
+  aiUsageLogs        AiUsageLog[]
+  confirmationTokens AiConfirmationToken[]
 }
 
 model Session {
@@ -147,13 +189,12 @@ model Verification {
   @@index([identifier])
 }
 
-// Better Auth rate-limit storage (storage: "database"). Kept in the schema's
-// PascalCase convention — no @@map — to match the other auth tables.
+// Better Auth rate-limit storage (storage: "database")
 model RateLimit {
-  id          String @id @default(cuid())
-  key         String @unique
-  count       Int
-  lastRequest BigInt
+  id          String  @id @default(cuid())
+  key         String  @unique
+  count       Int     @default(0)
+  lastRequest BigInt?
 }
 
 model UserSettings {
@@ -163,63 +204,56 @@ model UserSettings {
   notificationsEnabled Boolean  @default(true)
   keyboardShortcuts    Json?
   connectedAccounts    Json?
+  activeWorkspaceId    String?
+  revenueGoalAmount    Decimal  @default(1000000) @db.Decimal(12, 2)
+  revenueGoalMetric    String   @default("COLLECTED_REVENUE") // COLLECTED_REVENUE | NET_PROFIT
+  dailyBriefingTime    String   @default("08:30")
+  lastBriefingDate     String?
+  aiMonthlyBudgetUsd   Decimal  @default(10.00) @db.Decimal(6, 2)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Project {
-  id               String        @id @default(cuid())
-  userId           String
-  title            String
-  description      String?
-  color            String?
-  icon             String?
-  status           WorkStatus    @default(PLANNED)
-  previousStatus   WorkStatus?
-  priority         Priority      @default(MEDIUM)
-  startDate        DateTime?
-  deadline         DateTime?
-  progress         Int           @default(0)
-  githubRepository String?
-  website          String?
-  archivedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks            Task[]
-  milestones       Milestone[]
-  notes            Note[]
-  files            FileAsset[]
-  goals            Goal[]
-  activityLogs     ActivityLog[]
-  comments         Comment[]
-  tags             Tag[]         @relation("ProjectTags")
+// ----------------------------------------------------
+// THE 5 WORKSPACES
+// ----------------------------------------------------
 
-  @@index([userId, status])
-  @@index([deadline])
-}
-
-model Milestone {
-  id          String     @id @default(cuid())
+model Workspace {
+  id          String   @id @default(cuid())
   userId      String
-  projectId   String
-  title       String
+  slug        String   // freelance-software | dkom | diamond-jewellers | mithila-kritikala | personal
+  name        String   // Freelance & Software Development | DKOM | Diamond Jewellers | Mithila KritiKala | Personal
   description String?
-  status      WorkStatus @default(PLANNED)
-  dueDate     DateTime?
-  progress    Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  color       String?
+  icon        String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([projectId])
+  projects     Project[]
+  tasks        Task[]
+  clients      Client[]
+  transactions FinanceTransaction[]
+  invoices     Invoice[]
+  documents    Document[]
+  notes        Note[]
+  noteFolders  NoteFolder[]
+  events       CalendarEvent[]
+
+  @@unique([userId, slug])
+  @@index([userId])
 }
+
+// ----------------------------------------------------
+// TASKS & SUBTASKS
+// ----------------------------------------------------
 
 model Task {
   id               String              @id @default(cuid())
   userId           String
+  workspaceId      String?
   projectId        String?
   parentId         String?
   title            String
@@ -233,11 +267,14 @@ model Task {
   estimatedMinutes Int?
   actualMinutes    Int?
   progress         Int                 @default(0)
+  kanbanOrder      Int                 @default(0)
   completedAt      DateTime?
   archivedAt       DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
+
   user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   parent           Task?               @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks         Task[]              @relation("TaskSubtasks")
@@ -248,6 +285,7 @@ model Task {
   tags             Tag[]               @relation("TaskTags")
 
   @@index([userId, status])
+  @@index([workspaceId, status])
   @@index([projectId])
   @@index([dueDate])
 }
@@ -263,23 +301,409 @@ model TaskDependency {
   @@unique([taskId, dependsOnTaskId])
 }
 
-model CalendarEvent {
-  id          String              @id @default(cuid())
-  userId      String
+// ----------------------------------------------------
+// PROJECTS & MILESTONES
+// ----------------------------------------------------
+
+model Project {
+  id               String        @id @default(cuid())
+  userId           String
+  workspaceId      String?
+  title            String
+  description      String?
+  color            String?
+  icon             String?
+  status           WorkStatus    @default(PLANNED)
+  previousStatus   WorkStatus?
+  priority         Priority      @default(MEDIUM)
+  startDate        DateTime?
+  deadline         DateTime?
+  progress         Int           @default(0)
+  blockers         String?
+  nextAction       String?
+  githubRepository String?
+  website          String?
+  archivedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks            Task[]
+  milestones       Milestone[]
+  notes            Note[]
+  documents        Document[]
+  files            FileAsset[]
+  goals            Goal[]
+  activityLogs     ActivityLog[]
+  comments         Comment[]
+  tags             Tag[]         @relation("ProjectTags")
+
+  @@index([userId, status])
+  @@index([workspaceId, status])
+  @@index([deadline])
+}
+
+model Milestone {
+  id          String     @id @default(cuid())
+  userId      String?
+  projectId   String
   title       String
   description String?
-  startsAt    DateTime
+  status      WorkStatus @default(PLANNED)
+  dueDate     DateTime?
+  progress    Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ----------------------------------------------------
+// CLIENT CRM
+// ----------------------------------------------------
+
+model Client {
+  id             String              @id @default(cuid())
+  workspaceId    String
+  name           String
+  company        String?
+  email          String?
+  phone          String?
+  leadSource     String?
+  dealValue      Decimal?            @default(0) @db.Decimal(12, 2)
+  stage          LeadStage           @default(LEAD)
+  lostReason     String?
+  nextFollowUpAt DateTime?
+  requirements   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  interactions   ClientInteraction[]
+  invoices       Invoice[]
+  transactions   FinanceTransaction[]
+  documents      Document[]
+  notes          Note[]
+
+  @@index([workspaceId, stage])
+  @@index([nextFollowUpAt])
+}
+
+model ClientInteraction {
+  id            String    @id @default(cuid())
+  clientId      String
+  type          String    // CALL | EMAIL | MEETING | WHATSAPP | NOTE
+  summary       String
+  interactionAt DateTime  @default(now())
+  followUpAt    DateTime?
+  createdAt     DateTime  @default(now())
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+// ----------------------------------------------------
+// REVENUE, INVOICING & EXPENSES (Granular Ledger)
+// ----------------------------------------------------
+
+model Invoice {
+  id                 String               @id @default(cuid())
+  workspaceId        String
+  clientId           String?
+  invoiceNumber      String               @unique
+  subtotal           Decimal              @default(0) @db.Decimal(12, 2)
+  tax                Decimal              @default(0) @db.Decimal(12, 2)
+  totalAmount        Decimal              @default(0) @db.Decimal(12, 2)
+  amountPaid         Decimal              @default(0) @db.Decimal(12, 2)
+  outstandingBalance Decimal              @default(0) @db.Decimal(12, 2)
+  status             InvoiceStatus        @default(DRAFT)
+  issuedAt           DateTime             @default(now())
+  dueAt              DateTime
+  paidAt             DateTime?
+  items              Json                 // [{ description, quantity, unitPrice, amount }]
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  workspace          Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client             Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  payments           FinanceTransaction[]
+
+  @@index([workspaceId, status])
+  @@index([dueAt])
+}
+
+model FinanceTransaction {
+  id             String       @id @default(cuid())
+  userId         String?
+  workspaceId    String?
+  clientId       String?
+  invoiceId      String?
+  idempotencyKey String?      @unique
+  type           FinanceType
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       String       @default("INR")
+  category       String       // Web Dev | Clothing Sale | Art Commission | Tools | Materials
+  paymentMethod  String?      // UPI | Bank Transfer | Cash | Card
+  description    String?
+  occurredAt     DateTime?
+  date           DateTime     @default(now())
+  recurring      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, type, date])
+  @@index([userId, occurredAt])
+}
+
+// ----------------------------------------------------
+// JOB APPLICATION TRACKER (User-Level Module)
+// ----------------------------------------------------
+
+model JobApplication {
+  id               String    @id @default(cuid())
+  userId           String
+  company          String
+  role             String
+  jobType          String    @default("REMOTE") // REMOTE | HYBRID | ONSITE
+  salaryRange      String?
+  location         String?
+  source           String?   // LinkedIn | Referral | Career Page | Recruiter
+  status           JobStatus @default(APPLIED)
+  currentStage     String?
+  appliedAt        DateTime  @default(now())
+  followUpDeadline DateTime?
+  notes            String?
+  interviewStages  Json?     // [{ stageName, date, completed, feedback }]
+  outcomeDate      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([followUpDeadline])
+}
+
+// ----------------------------------------------------
+// NOTES & DOCUMENTS
+// ----------------------------------------------------
+
+model NoteFolder {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  parentId    String?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  notes       Note[]
+
+  @@index([workspaceId])
+}
+
+model Note {
+  id              String         @id @default(cuid())
+  userId          String?
+  workspaceId     String?
+  folderId        String?
+  projectId       String?
+  clientId        String?
+  eventId         String?
+  knowledgePageId String?
+  title           String
+  content         String?
+  folder          String?
+  tagsList        String[]
+  isPinned        Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace       Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  noteFolder      NoteFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client          Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  event           CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  knowledgePage   KnowledgePage? @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+  outgoingLinks   NoteLink[]     @relation("SourceNote")
+  incomingLinks   NoteLink[]     @relation("TargetNote")
+  files           FileAsset[]
+  tags            Tag[]          @relation("NoteTags")
+
+  @@index([workspaceId, isPinned])
+  @@index([userId, updatedAt])
+}
+
+model NoteLink {
+  id        String   @id @default(cuid())
+  sourceId  String
+  targetId  String
+  createdAt DateTime @default(now())
+  source    Note     @relation("SourceNote", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Note     @relation("TargetNote", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId])
+}
+
+model Document {
+  id          String        @id @default(cuid())
+  userId      String?
+  workspaceId String?
+  projectId   String?
+  clientId    String?
+  title       String
+  description String?
+  folder      String?
+  type        String?
+  category    String?       // PROPOSAL | AGREEMENT | INVOICE | REQUIREMENT | TEMPLATE | OTHER
+  fileUrl     String?
+  fileKey     String?
+  mimeType    String?
+  size        Int?
+  content     String?       // Template or record text body
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  files       FileAsset[]
+  versions    FileVersion[]
+  tags        Tag[]         @relation("DocumentTags")
+
+  @@index([workspaceId, category])
+}
+
+model FileAsset {
+  id         String    @id @default(cuid())
+  userId     String
+  projectId  String?
+  taskId     String?
+  noteId     String?
+  documentId String?
+  name       String
+  url        String
+  mimeType   String?
+  size       Int?
+  checksum   String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  note       Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+}
+
+model FileVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  url        String
+  version    Int
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// CALENDAR & REMINDERS
+// ----------------------------------------------------
+
+model CalendarEvent {
+  id          String              @id @default(cuid())
+  userId      String?
+  workspaceId String?
+  title       String
+  description String?
+  startsAt    DateTime            @default(now())
   endsAt      DateTime?
+  startAt     DateTime?
+  endAt       DateTime?
+  allDay      Boolean             @default(false)
   location    String?
+  color       String?
   recurrence  RecurrenceFrequency @default(NONE)
   reminderAt  DateTime?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user        User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   notes       Note[]
 
+  @@index([workspaceId, startsAt])
   @@index([userId, startsAt])
 }
+
+// ----------------------------------------------------
+// AI ASSISTANT CONVERSATIONS, USAGE & CONFIRMATIONS
+// ----------------------------------------------------
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  userId    String
+  title     String
+  provider  String      // gemini | openai | anthropic
+  model     String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiMessage[]
+
+  @@index([userId])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  role           String         // user | assistant | system | tool
+  content        String
+  toolCalls      Json?
+  toolResults    Json?
+  createdAt      DateTime       @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  userId           String
+  provider         String
+  model            String
+  promptTokens     Int
+  completionTokens Int
+  estimatedCostUsd Decimal  @default(0) @db.Decimal(10, 4)
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model AiConfirmationToken {
+  id          String    @id @default(cuid())
+  userId      String
+  toolName    String
+  payloadHash String    // SHA-256 hash of payload
+  rawPayload  Json
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime
+  usedAt      DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+// ----------------------------------------------------
+// KNOWLEDGE, GOALS, HABITS, JOURNAL & COMMUNITY (PRESERVED)
+// ----------------------------------------------------
 
 model KnowledgePage {
   id         String          @id @default(cuid())
@@ -312,41 +736,6 @@ model PageVersion {
   knowledgePage   KnowledgePage @relation(fields: [knowledgePageId], references: [id], onDelete: Cascade)
 }
 
-model Note {
-  id              String         @id @default(cuid())
-  userId          String
-  projectId       String?
-  eventId         String?
-  knowledgePageId String?
-  title           String
-  content         String?
-  folder          String?
-  isPinned        Boolean        @default(false)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  event           CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  knowledgePage   KnowledgePage? @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
-  outgoingLinks   NoteLink[]     @relation("SourceNote")
-  incomingLinks   NoteLink[]     @relation("TargetNote")
-  files           FileAsset[]
-  tags            Tag[]          @relation("NoteTags")
-
-  @@index([userId, updatedAt])
-}
-
-model NoteLink {
-  id        String   @id @default(cuid())
-  sourceId  String
-  targetId  String
-  createdAt DateTime @default(now())
-  source    Note     @relation("SourceNote", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    Note     @relation("TargetNote", fields: [targetId], references: [id], onDelete: Cascade)
-
-  @@unique([sourceId, targetId])
-}
-
 model Idea {
   id             String     @id @default(cuid())
   userId         String
@@ -361,50 +750,6 @@ model Idea {
   updatedAt      DateTime   @updatedAt
   user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   tags           Tag[]      @relation("IdeaTags")
-}
-
-model Document {
-  id          String        @id @default(cuid())
-  userId      String
-  title       String
-  description String?
-  folder      String?
-  type        String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  files       FileAsset[]
-  versions    FileVersion[]
-  tags        Tag[]         @relation("DocumentTags")
-}
-
-model FileAsset {
-  id         String    @id @default(cuid())
-  userId     String
-  projectId  String?
-  taskId     String?
-  noteId     String?
-  documentId String?
-  name       String
-  url        String
-  mimeType   String?
-  size       Int?
-  checksum   String?
-  createdAt  DateTime  @default(now())
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project    Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  note       Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
-  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-}
-
-model FileVersion {
-  id         String   @id @default(cuid())
-  documentId String
-  url        String
-  version    Int
-  createdAt  DateTime @default(now())
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 model Goal {
@@ -524,23 +869,6 @@ model LearningItem {
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   course      Course?    @relation(fields: [courseId], references: [id], onDelete: SetNull)
   tags        Tag[]      @relation("LearningTags")
-}
-
-model FinanceTransaction {
-  id          String      @id @default(cuid())
-  userId      String
-  type        FinanceType
-  amount      Decimal     @db.Decimal(12, 2)
-  currency    String      @default("USD")
-  category    String
-  description String?
-  occurredAt  DateTime
-  recurring   Boolean     @default(false)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, occurredAt])
 }
 
 model Budget {
