@@ -81,6 +81,10 @@ import { SettingsPage } from "./settings-page";
 import { FinanceView } from "./finance-view";
 import { CrmView } from "./crm-view";
 import { JobsView } from "./jobs-view";
+import { NotesView } from "./notes-view";
+import { DocumentsView } from "./documents-view";
+import { CalendarView } from "./calendar-view";
+import { useWorkspaceScheduler } from "../hooks/use-workspace-scheduler";
 
 export const WORKSPACE_OPTIONS: { slug: WorkspaceSlug; label: string; dot: string }[] = [
   { slug: "unified", label: "Unified (All Workspaces)", dot: "bg-purple-500" },
@@ -151,6 +155,8 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
     priority: "medium",
     dueDate: ""
   });
+
+  useWorkspaceScheduler();
 
   useEffect(() => {
     setPinEnabled(hasPasscode());
@@ -427,6 +433,12 @@ export function DashyWorkspace({ module }: { module: ModuleKey }) {
             <CrmView />
           ) : module === "jobs" ? (
             <JobsView />
+          ) : module === "notes" ? (
+            <NotesView />
+          ) : module === "documents" ? (
+            <DocumentsView />
+          ) : module === "calendar" ? (
+            <CalendarView />
           ) : (
             <ModulePage
               definition={definition}
