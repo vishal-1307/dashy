@@ -23,20 +23,47 @@ const authRateLimitRules = {
   "/request-password-reset": { window: 600, max: 3 }
 };
 
+import { validateOwnerRegistration } from "./auth/owner-bootstrap";
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   databaseHooks: {
     user: {
       create: {
-        before: async (user) => {
-          const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
-          if (ownerEmail && user.email?.trim().toLowerCase() !== ownerEmail) {
-            throw new Error("Unauthorized: Only the designated owner may register.");
+        before: async (user, context) => {
+          const ownerEmail = process.env.OWNER_EMAIL?.trim();
+          const bootstrapToken = process.env.OWNER_BOOTSTRAP_TOKEN?.trim();
+
+          let userCount = 0;
+          try {
+            userCount = await prisma.user.count();
+          } catch {
+            userCount = 0;
           }
-          const userCount = await prisma.user.count();
-          if (userCount >= 1) {
-            throw new Error("Registration is permanently closed.");
+
+          let providedToken: string | undefined;
+          if (context) {
+            try {
+              const ctx = context as { headers?: Headers; request?: Request };
+              providedToken =
+                ctx.headers?.get?.("x-owner-bootstrap-token") ??
+                (ctx.request ? new Headers(ctx.request.headers).get("x-owner-bootstrap-token") ?? undefined : undefined);
+            } catch {
+              providedToken = undefined;
+            }
           }
+
+          const validation = validateOwnerRegistration(
+            user.email ?? "",
+            providedToken,
+            { ownerEmail: ownerEmail ?? "", bootstrapToken },
+            userCount
+          );
+
+          if (!validation.allowed) {
+            throw new Error(validation.reason ?? "Registration rejected.");
+          }
+
           return { data: user };
         }
       }

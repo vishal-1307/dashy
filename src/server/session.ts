@@ -2,15 +2,15 @@ import { headers } from "next/headers";
 import { auth } from "./auth";
 
 export class UnauthenticatedError extends Error {
-  constructor() {
-    super("You must be signed in to do that.");
+  constructor(message: string = "You must be signed in to do that.") {
+    super(message);
     this.name = "UnauthenticatedError";
   }
 }
 
 export class UnauthorizedOwnerError extends Error {
-  constructor() {
-    super("Access restricted to authorized owner only.");
+  constructor(message: string = "Access restricted to authorized owner only.") {
+    super(message);
     this.name = "UnauthorizedOwnerError";
   }
 }
@@ -26,8 +26,11 @@ export async function requireOwnerSession(): Promise<{ userId: string; email: st
   }
 
   const configuredOwner = process.env.OWNER_EMAIL?.trim().toLowerCase();
-  if (configuredOwner && session.user.email?.trim().toLowerCase() !== configuredOwner) {
-    throw new UnauthorizedOwnerError();
+  if (!configuredOwner) {
+    throw new UnauthorizedOwnerError("Server security misconfiguration: OWNER_EMAIL is not configured.");
+  }
+  if (session.user.email?.trim().toLowerCase() !== configuredOwner) {
+    throw new UnauthorizedOwnerError("Access restricted to authorized owner only.");
   }
 
   return { userId: session.user.id, email: session.user.email };

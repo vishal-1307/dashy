@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password", "/privacy", "/terms"];
+const PUBLIC_PATHS = ["/login", "/signup", "/setup", "/forgot-password", "/reset-password", "/privacy", "/terms"];
 
 // Middleware runs on the Edge runtime, where Prisma can't execute — this is
 // an optimistic cookie-presence check (Better Auth's recommended pattern for

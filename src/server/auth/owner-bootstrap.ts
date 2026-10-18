@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 export interface DefaultWorkspaceDef {
   slug: string;
   name: string;
@@ -49,8 +51,20 @@ export interface OwnerBootstrapConfig {
 }
 
 /**
+ * Constant-time string comparison to prevent timing attacks on tokens.
+ */
+export function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
  * Validates whether an incoming registration or setup request is authorized to bootstrap
- * the single-owner account.
+ * the single-owner account. Fails closed under all circumstances.
  */
 export function validateOwnerRegistration(
   attemptEmail: string,
@@ -58,7 +72,7 @@ export function validateOwnerRegistration(
   config: OwnerBootstrapConfig,
   currentExistingUserCount: number
 ): { allowed: boolean; reason?: string } {
-  // If an owner account already exists, all future public registrations are permanently locked.
+  // 1. If an owner account already exists, all future registrations are permanently locked.
   if (currentExistingUserCount >= 1) {
     return {
       allowed: false,
@@ -66,31 +80,41 @@ export function validateOwnerRegistration(
     };
   }
 
-  const normalizedAttempt = attemptEmail.trim().toLowerCase();
-  const normalizedConfigured = config.ownerEmail.trim().toLowerCase();
+  const normalizedConfiguredEmail = config.ownerEmail ? config.ownerEmail.trim().toLowerCase() : "";
+  const normalizedAttemptEmail = attemptEmail ? attemptEmail.trim().toLowerCase() : "";
 
-  if (!normalizedConfigured) {
+  // 2. Fail closed if OWNER_EMAIL is not set on the server
+  if (!normalizedConfiguredEmail) {
     return {
       allowed: false,
-      reason: "OWNER_EMAIL configuration is missing on server. Refusing registration."
+      reason: "Server security misconfiguration: OWNER_EMAIL is not configured. Registration is blocked."
     };
   }
 
-  if (normalizedAttempt !== normalizedConfigured) {
+  // 3. Fail closed if attempt email does not match configured OWNER_EMAIL
+  if (!normalizedAttemptEmail || normalizedAttemptEmail !== normalizedConfiguredEmail) {
     return {
       allowed: false,
       reason: "Unauthorized email address. Only the configured owner email can be registered."
     };
   }
 
-  // If a bootstrap token is configured, require it during initial setup
-  if (config.bootstrapToken) {
-    if (!providedToken || providedToken !== config.bootstrapToken) {
-      return {
-        allowed: false,
-        reason: "Invalid or missing owner bootstrap token."
-      };
-    }
+  // 4. Fail closed if OWNER_BOOTSTRAP_TOKEN is not configured on the server
+  const configuredToken = config.bootstrapToken ? config.bootstrapToken.trim() : "";
+  if (!configuredToken) {
+    return {
+      allowed: false,
+      reason: "Server security misconfiguration: OWNER_BOOTSTRAP_TOKEN is not configured. Setup is blocked."
+    };
+  }
+
+  // 5. Strictly require timing-safe verification of the bootstrap token
+  const cleanedProvidedToken = providedToken ? providedToken.trim() : "";
+  if (!cleanedProvidedToken || !timingSafeCompare(cleanedProvidedToken, configuredToken)) {
+    return {
+      allowed: false,
+      reason: "Invalid or missing owner bootstrap token."
+    };
   }
 
   return { allowed: true };

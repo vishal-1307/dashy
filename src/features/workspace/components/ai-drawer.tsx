@@ -122,25 +122,29 @@ Ask me for a morning briefing, to check your ₹10L goal progress, or to plan ne
   const handleConfirmAction = async () => {
     if (!activeConfirmation) return;
     const { token, toolCall } = activeConfirmation;
-    const verify = await verifyConfirmationTokenAction(token, toolCall.arguments);
-    if (!verify.valid) {
-      toast.error(`Confirmation failed: ${verify.reason}`);
-      return;
-    }
-
-    token.usedAt = new Date();
-    setActiveConfirmation(null);
-    toast.success(`Action "${toolCall.name}" confirmed and safely executed`);
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `msg_${Date.now()}`,
-        role: "assistant",
-        content: `✅ Confirmed: Successfully executed \`${toolCall.name}\` with verified cryptographic token \`${token.id.slice(0, 12)}...\`.`,
-        createdAt: new Date().toISOString()
+    try {
+      const verify = await verifyConfirmationTokenAction(token, toolCall.arguments);
+      if (!verify.valid) {
+        toast.error(`Confirmation failed: ${verify.reason}`);
+        return;
       }
-    ]);
+
+      token.usedAt = new Date();
+      setActiveConfirmation(null);
+      toast.success(`Action "${toolCall.name}" confirmed and safely executed`);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg_${Date.now()}`,
+          role: "assistant",
+          content: `✅ Confirmed: Successfully executed \`${toolCall.name}\` with verified cryptographic token \`${token.id.slice(0, 12)}...\`.`,
+          createdAt: new Date().toISOString()
+        }
+      ]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unauthorized to confirm action");
+    }
   };
 
   const handleRejectAction = () => {

@@ -1,117 +1,64 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { FormEvent } from "react";
-import { signIn, signUp } from "@/server/auth-client";
-import { Turnstile, captchaHeaders, turnstileConfigured } from "@/features/auth/turnstile";
-import { track } from "@/shared/lib/analytics";
+import { Lock, ShieldAlert } from "lucide-react";
 
 export default function SignupPage() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (turnstileConfigured && !captchaToken) {
-      setError("Please complete the verification challenge.");
-      return;
-    }
-    setLoading(true);
-    const { error: signUpError } = await signUp.email(
-      { name, email, password },
-      { headers: captchaHeaders(captchaToken) }
-    );
-    setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message ?? "Could not create your account.");
-      return;
-    }
-    track("signed_up", { method: "email" });
-    router.push("/");
-    router.refresh();
-  };
-
-  const withGoogle = async () => {
-    setError(null);
-    setGoogleLoading(true);
-    const { error: socialError } = await signIn.social({ provider: "google", callbackURL: "/" });
-    if (socialError) {
-      setGoogleLoading(false);
-      setError(socialError.message ?? "Could not start Google sign-in.");
-    }
-  };
-
   return (
     <main className="auth-screen">
-      <div className="auth-card">
+      <div className="auth-card" style={{ textAlign: "center" }}>
         <div className="auth-card__head">
-          <span className="brand__mark brand__mark--lg">D</span>
-          <h1>Create your Dashy account</h1>
-          <p>One workspace for tasks, projects, and everything else.</p>
+          <div
+            style={{
+              width: "3rem",
+              height: "3rem",
+              borderRadius: "999px",
+              background: "rgb(var(--accent-soft))",
+              color: "rgb(var(--accent))",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 0.8rem"
+            }}
+          >
+            <ShieldAlert style={{ width: "1.6rem", height: "1.6rem" }} />
+          </div>
+          <h1>Public Registration Closed</h1>
+          <p>
+            Dashy is a single-owner personal work management dashboard. Public self-registration is disabled.
+          </p>
         </div>
 
-        {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        <div style={{ margin: "1.5rem 0", display: "grid", gap: "0.8rem" }}>
+          <div
+            style={{
+              padding: "1rem",
+              background: "rgb(var(--surface-strong))",
+              border: "1px solid rgb(var(--border))",
+              borderRadius: "var(--radius)",
+              fontSize: "0.82rem",
+              color: "rgb(var(--muted))",
+              lineHeight: 1.5,
+              textAlign: "left"
+            }}
+          >
+            <strong style={{ color: "rgb(var(--foreground))" }}>First-time Initialization:</strong>
+            <br />
+            If you are the owner initializing Dashy for the first time, use the secure Setup Wizard with your server bootstrap token.
+          </div>
 
-        <form className="auth-form" onSubmit={submit}>
-          <label>Name
-            <input
-              autoComplete="name"
-              required
-              type="text"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label>Email
-            <input
-              autoComplete="email"
-              required
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-          <label>Password
-            <input
-              autoComplete="new-password"
-              minLength={8}
-              required
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-          <Turnstile onVerify={setCaptchaToken} />
-          <button className="primary-button primary-button--full" disabled={loading} type="submit">
-            {loading ? "Creating account…" : "Create account"}
-          </button>
-          <p className="auth-legal">
-            By creating an account you agree to the <Link href="/terms">Terms</Link> and{" "}
-            <Link href="/privacy">Privacy Policy</Link>.
-          </p>
-        </form>
+          <Link href="/setup" className="primary-button primary-button--full" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}>
+            <Lock style={{ width: "1rem", height: "1rem" }} />
+            Open Setup Wizard
+          </Link>
 
-        <div className="auth-divider">or</div>
+          <Link href="/login" className="ghost-button" style={{ display: "inline-block", width: "100%", padding: "0.6rem", textAlign: "center", fontSize: "0.82rem" }}>
+            Already initialized? Sign In
+          </Link>
+        </div>
 
-        <button className="auth-google" disabled={googleLoading} onClick={withGoogle} type="button">
-          {googleLoading ? "Redirecting…" : "Continue with Google"}
-        </button>
-
-        <p className="auth-switch">
-          Already have an account? <Link href="/login">Sign in</Link>
+        <p className="auth-legal" style={{ fontSize: "0.72rem", color: "rgb(var(--muted))" }}>
+          Protected by single-owner verified bootstrap security.
         </p>
       </div>
     </main>

@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   CheckCircle2,
   KeyRound,
   Lock,
   ShieldCheck
 } from "lucide-react";
 import { toast } from "sonner";
+import { bootstrapOwnerAction, getSetupStatusAction } from "@/server/actions/bootstrap";
 
 export default function SetupPage() {
   const router = useRouter();
@@ -17,6 +19,8 @@ export default function SetupPage() {
   const [password, setPassword] = useState("");
   const [bootstrapToken, setBootstrapToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(true);
   const [completed, setCompleted] = useState(false);
 
   const defaultWorkspaces = [
@@ -27,6 +31,27 @@ export default function SetupPage() {
     { title: "Personal", desc: "College coursework, cybersecurity certifications, and life goals", dot: "#4f46e5" }
   ];
 
+  useEffect(() => {
+    let mounted = true;
+    getSetupStatusAction()
+      .then((status) => {
+        if (!mounted) return;
+        setSetupRequired(status.setupRequired);
+        if (status.configuredOwnerEmail) {
+          setEmail(status.configuredOwnerEmail);
+        }
+      })
+      .catch(() => {
+        // Fall back to allowing form entry
+      })
+      .finally(() => {
+        if (mounted) setCheckingStatus(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleBootstrap = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim() || !bootstrapToken.trim()) {
@@ -34,12 +59,26 @@ export default function SetupPage() {
       return;
     }
 
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Client-side initial bootstrap demonstration
-      await new Promise((res) => setTimeout(res, 800));
+      const res = await bootstrapOwnerAction({
+        email: email.trim(),
+        password,
+        bootstrapToken: bootstrapToken.trim()
+      });
+
+      if (!res.success) {
+        toast.error(res.error);
+        return;
+      }
+
       setCompleted(true);
-      toast.success("Owner account & 5 default workspaces initialized successfully!");
+      toast.success(res.message);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bootstrap failed");
     } finally {
@@ -81,15 +120,30 @@ export default function SetupPage() {
           </p>
         </div>
 
-        {completed ? (
+        {checkingStatus ? (
+          <div style={{ textAlign: "center", padding: "2rem 0", color: "rgb(var(--muted))" }}>
+            Checking initialization status...
+          </div>
+        ) : !setupRequired ? (
+          <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+            <AlertTriangle style={{ width: "2.5rem", height: "2.5rem", color: "#f59e0b", margin: "0 auto 1rem" }} />
+            <h2 style={{ fontSize: "1.15rem", fontWeight: 700 }}>Setup Already Completed</h2>
+            <p style={{ fontSize: "0.82rem", color: "rgb(var(--muted))", maxWidth: "24rem", margin: "0.5rem auto 1.5rem" }}>
+              The single-owner account is already initialized. Public registration is permanently closed.
+            </p>
+            <Link href="/login" className="primary-button" style={{ display: "inline-block", margin: "0 auto" }}>
+              Sign In to Dashy
+            </Link>
+          </div>
+        ) : completed ? (
           <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
             <CheckCircle2 style={{ width: "3rem", height: "3rem", color: "#10b981", margin: "0 auto 1rem" }} />
             <h2 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Initialization Complete!</h2>
             <p style={{ fontSize: "0.82rem", color: "rgb(var(--muted))", maxWidth: "24rem", margin: "0.5rem auto 1.5rem" }}>
-              Your 5 dedicated workspaces are provisioned. Public registration has been permanently closed.
+              Your owner account and 5 dedicated workspaces are initialized. Public registration has been permanently closed.
             </p>
-            <button className="primary-button" style={{ margin: "0 auto" }} onClick={() => router.push("/")}>
-              Open Dashy Dashboard
+            <button className="primary-button" style={{ margin: "0 auto" }} onClick={() => router.push("/login")}>
+              Proceed to Sign In
             </button>
           </div>
         ) : (
@@ -100,7 +154,7 @@ export default function SetupPage() {
                 <span>Security Gate Notice</span>
               </div>
               <p style={{ margin: "0.3rem 0 0", color: "rgb(var(--foreground))", lineHeight: 1.5 }}>
-                Setup requires your high-entropy <code>OWNER_BOOTSTRAP_TOKEN</code>. Once the first account is created, all subsequent public registrations are permanently locked out.
+                Setup requires your high-entropy <code>OWNER_BOOTSTRAP_TOKEN</code> and configured <code>OWNER_EMAIL</code>. Once initialized, all public registration paths are permanently closed.
               </p>
             </div>
 
@@ -151,33 +205,50 @@ export default function SetupPage() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "0.6rem",
-                      padding: "0.45rem 0.7rem",
+                      justifyContent: "space-between",
+                      padding: "0.5rem 0.75rem",
                       background: "rgb(var(--surface-strong))",
-                      borderRadius: "var(--radius-sm)",
+                      border: "1px solid rgb(var(--border))",
+                      borderRadius: "var(--radius)",
                       fontSize: "0.74rem"
                     }}
                   >
-                    <span style={{ width: "0.55rem", height: "0.55rem", borderRadius: "999px", background: ws.dot, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <strong>{ws.title}</strong>
-                      <span style={{ color: "rgb(var(--muted))", marginLeft: "0.4rem", fontSize: "0.7rem" }}>— {ws.desc}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span
+                        style={{
+                          width: "0.6rem",
+                          height: "0.6rem",
+                          borderRadius: "999px",
+                          backgroundColor: ws.dot,
+                          display: "inline-block"
+                        }}
+                      />
+                      <span style={{ fontWeight: 600 }}>{ws.title}</span>
                     </div>
+                    <span style={{ color: "rgb(var(--muted))", fontSize: "0.68rem" }}>Default Domain</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid rgb(var(--border))", paddingTop: "1rem", marginTop: "0.5rem" }}>
-              <button className="primary-button primary-button--full" type="submit" disabled={loading}>
-                <Lock style={{ width: "1rem", height: "1rem" }} />
-                {loading ? "Bootstrapping Owner Workspace..." : "Initialize Owner & Workspaces"}
-              </button>
-            </div>
-
-            <div style={{ textAlign: "center", fontSize: "0.75rem", color: "rgb(var(--muted))" }}>
-              Already initialized? <Link href="/login" style={{ color: "rgb(var(--accent))", fontWeight: 600 }}>Log In</Link>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="primary-button"
+              style={{
+                width: "100%",
+                marginTop: "0.5rem",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.4rem",
+                padding: "0.65rem 1rem",
+                cursor: loading ? "not-allowed" : "pointer"
+              }}
+            >
+              <Lock style={{ width: "0.95rem", height: "0.95rem" }} />
+              {loading ? "Initializing..." : "Complete Setup & Initialize Workspaces"}
+            </button>
           </form>
         )}
       </div>
