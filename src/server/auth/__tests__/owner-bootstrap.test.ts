@@ -11,7 +11,7 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
     bootstrapToken: "high-entropy-secure-token-9876543210"
   };
 
-  it("defines exactly the 5 approved business workspaces", () => {
+  it("defines exactly the 5 approved business workspaces with exact names and slugs", () => {
     expect(DEFAULT_WORKSPACES).toHaveLength(5);
     const slugs = DEFAULT_WORKSPACES.map((w) => w.slug);
     expect(slugs).toEqual([
@@ -22,9 +22,25 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
       "personal"
     ]);
 
+    // Ensure rejected/outdated slugs do not exist
+    expect(slugs).not.toContain("real-estate-investments");
+    expect(slugs).not.toContain("personal-admin");
+
+    const freelance = DEFAULT_WORKSPACES.find((w) => w.slug === "freelance-software");
+    expect(freelance?.name).toBe("Freelance & Software Development");
+
     const dkom = DEFAULT_WORKSPACES.find((w) => w.slug === "dkom");
     expect(dkom?.name).toBe("DKOM");
     expect(dkom?.description).toContain("Mithila paintings");
+
+    const diamond = DEFAULT_WORKSPACES.find((w) => w.slug === "diamond-jewellers");
+    expect(diamond?.name).toBe("Diamond Jewellers");
+
+    const mithila = DEFAULT_WORKSPACES.find((w) => w.slug === "mithila-kritikala");
+    expect(mithila?.name).toBe("Mithila KritiKala");
+
+    const personal = DEFAULT_WORKSPACES.find((w) => w.slug === "personal");
+    expect(personal?.name).toBe("Personal");
   });
 
   describe("validateOwnerRegistration Policy", () => {
@@ -141,6 +157,80 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
 
     it("returns false for empty vs non-empty strings", () => {
       expect(timingSafeCompare("", "token")).toBe(false);
+    });
+  });
+
+  describe("Bootstrap Action Environment Guardrails", () => {
+    it("fails securely when OWNER_EMAIL is missing in process.env", async () => {
+      const origEmail = process.env.OWNER_EMAIL;
+      const origToken = process.env.OWNER_BOOTSTRAP_TOKEN;
+      try {
+        delete process.env.OWNER_EMAIL;
+        process.env.OWNER_BOOTSTRAP_TOKEN = "valid-token";
+
+        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
+        const res = await bootstrapOwnerAction({
+          email: "owner@dashy.local",
+          password: "password12345",
+          bootstrapToken: "valid-token"
+        });
+
+        expect(res.success).toBe(false);
+        if (!res.success) {
+          expect(res.error).toContain("OWNER_EMAIL environment variable is not configured");
+        }
+      } finally {
+        if (origEmail) process.env.OWNER_EMAIL = origEmail;
+        if (origToken) process.env.OWNER_BOOTSTRAP_TOKEN = origToken;
+      }
+    });
+
+    it("fails securely when OWNER_BOOTSTRAP_TOKEN is missing in process.env", async () => {
+      const origEmail = process.env.OWNER_EMAIL;
+      const origToken = process.env.OWNER_BOOTSTRAP_TOKEN;
+      try {
+        process.env.OWNER_EMAIL = "owner@dashy.local";
+        delete process.env.OWNER_BOOTSTRAP_TOKEN;
+
+        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
+        const res = await bootstrapOwnerAction({
+          email: "owner@dashy.local",
+          password: "password12345",
+          bootstrapToken: "valid-token"
+        });
+
+        expect(res.success).toBe(false);
+        if (!res.success) {
+          expect(res.error).toContain("OWNER_BOOTSTRAP_TOKEN environment variable is not configured");
+        }
+      } finally {
+        if (origEmail) process.env.OWNER_EMAIL = origEmail;
+        if (origToken) process.env.OWNER_BOOTSTRAP_TOKEN = origToken;
+      }
+    });
+
+    it("rejects password shorter than 8 characters before touching auth service", async () => {
+      const origEmail = process.env.OWNER_EMAIL;
+      const origToken = process.env.OWNER_BOOTSTRAP_TOKEN;
+      try {
+        process.env.OWNER_EMAIL = "owner@dashy.local";
+        process.env.OWNER_BOOTSTRAP_TOKEN = "valid-token";
+
+        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
+        const res = await bootstrapOwnerAction({
+          email: "owner@dashy.local",
+          password: "short",
+          bootstrapToken: "valid-token"
+        });
+
+        expect(res.success).toBe(false);
+        if (!res.success) {
+          expect(res.error).toContain("at least 8 characters");
+        }
+      } finally {
+        if (origEmail) process.env.OWNER_EMAIL = origEmail;
+        if (origToken) process.env.OWNER_BOOTSTRAP_TOKEN = origToken;
+      }
     });
   });
 });

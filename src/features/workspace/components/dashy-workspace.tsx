@@ -89,8 +89,8 @@ import { useWorkspaceScheduler } from "../hooks/use-workspace-scheduler";
 
 export const WORKSPACE_OPTIONS: { slug: WorkspaceSlug; label: string; dot: string }[] = [
   { slug: "unified", label: "Unified (All Workspaces)", dot: "bg-purple-500" },
-  { slug: "freelance-software", label: "Freelance & Software", dot: "bg-blue-600" },
-  { slug: "dkom", label: "DKOM (Art & Wear)", dot: "bg-rose-600" },
+  { slug: "freelance-software", label: "Freelance & Software Development", dot: "bg-blue-600" },
+  { slug: "dkom", label: "DKOM", dot: "bg-rose-600" },
   { slug: "diamond-jewellers", label: "Diamond Jewellers", dot: "bg-amber-600" },
   { slug: "mithila-kritikala", label: "Mithila KritiKala", dot: "bg-emerald-600" },
   { slug: "personal", label: "Personal", dot: "bg-indigo-600" }

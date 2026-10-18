@@ -7,6 +7,7 @@ import { DEFAULT_WORKSPACES, validateOwnerRegistration } from "@/server/auth/own
 export type BootstrapStatusResult = {
   setupRequired: boolean;
   configuredOwnerEmail?: string;
+  hasOwnerEmail: boolean;
   hasBootstrapToken: boolean;
 };
 
@@ -32,6 +33,7 @@ export async function getSetupStatusAction(): Promise<BootstrapStatusResult> {
   return {
     setupRequired: userCount === 0,
     configuredOwnerEmail: ownerEmail || undefined,
+    hasOwnerEmail: Boolean(ownerEmail && ownerEmail.length > 0),
     hasBootstrapToken: Boolean(bootstrapToken && bootstrapToken.length > 0)
   };
 }
@@ -129,23 +131,7 @@ export async function bootstrapOwnerAction(formData: {
     const userId = result.user.id;
 
     // 6. Idempotently provision the 5 default workspaces
-    try {
-      for (const ws of DEFAULT_WORKSPACES) {
-        await prisma.workspace.upsert({
-          where: { userId_slug: { userId, slug: ws.slug } },
-          create: {
-            userId,
-            slug: ws.slug,
-            name: ws.name,
-            description: ws.description,
-            isDefault: ws.slug === "freelance-software"
-          },
-          update: {}
-        });
-      }
-    } catch (wsErr) {
-      console.warn("Notice: Workspace table not yet migrated or seeded:", wsErr);
-    }
+    await ensureDefaultWorkspacesForUser(userId);
 
     return {
       success: true,
@@ -157,5 +143,28 @@ export async function bootstrapOwnerAction(formData: {
       success: false,
       error: `Registration failed: ${msg}`
     };
+  }
+}
+
+/**
+ * Idempotently ensures all 5 default workspaces exist for a given owner user.
+ */
+export async function ensureDefaultWorkspacesForUser(userId: string): Promise<void> {
+  for (const ws of DEFAULT_WORKSPACES) {
+    await prisma.workspace.upsert({
+      where: { userId_slug: { userId, slug: ws.slug } },
+      create: {
+        userId,
+        slug: ws.slug,
+        name: ws.name,
+        description: ws.description,
+        isDefault: ws.slug === "freelance-software"
+      },
+      update: {
+        name: ws.name,
+        description: ws.description,
+        isDefault: ws.slug === "freelance-software"
+      }
+    });
   }
 }

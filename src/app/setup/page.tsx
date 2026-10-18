@@ -22,6 +22,8 @@ export default function SetupPage() {
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [setupRequired, setSetupRequired] = useState(true);
   const [completed, setCompleted] = useState(false);
+  const [hasOwnerEmail, setHasOwnerEmail] = useState(true);
+  const [hasBootstrapToken, setHasBootstrapToken] = useState(true);
 
   const defaultWorkspaces = [
     { title: "Freelance & Software Development", desc: "Client software builds, website contracts, and client invoices", dot: "#2563eb" },
@@ -37,6 +39,8 @@ export default function SetupPage() {
       .then((status) => {
         if (!mounted) return;
         setSetupRequired(status.setupRequired);
+        setHasOwnerEmail(status.hasOwnerEmail);
+        setHasBootstrapToken(status.hasBootstrapToken);
         if (status.configuredOwnerEmail) {
           setEmail(status.configuredOwnerEmail);
         }
@@ -148,6 +152,29 @@ export default function SetupPage() {
           </div>
         ) : (
           <form onSubmit={handleBootstrap} style={{ display: "grid", gap: "1rem" }}>
+            {(!hasOwnerEmail || !hasBootstrapToken) && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.08)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: "var(--radius)",
+                  padding: "0.85rem 1rem",
+                  fontSize: "0.78rem"
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, color: "#ef4444" }}>
+                  <AlertTriangle style={{ width: "1rem", height: "1rem" }} />
+                  <span>Server Environment Configuration Needed</span>
+                </div>
+                <p style={{ margin: "0.4rem 0 0", color: "rgb(var(--foreground))", lineHeight: 1.5 }}>
+                  The server is missing required configuration:
+                  {!hasOwnerEmail && <strong> OWNER_EMAIL is not set.</strong>}
+                  {!hasBootstrapToken && <strong> OWNER_BOOTSTRAP_TOKEN is not set.</strong>}
+                  {" "}Please configure them in your <code>.env</code> file before submitting setup.
+                </p>
+              </div>
+            )}
+
             <div style={{ background: "rgba(var(--accent), 0.08)", border: "1px solid rgba(var(--accent), 0.2)", borderRadius: "var(--radius)", padding: "0.8rem 1rem", fontSize: "0.76rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 700, color: "rgb(var(--accent))" }}>
                 <KeyRound style={{ width: "0.95rem", height: "0.95rem" }} />
