@@ -246,6 +246,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           create({
             id: item.id,
             module: item.module,
+            workspace: item.workspace,
             title: item.title,
             description: item.description,
             priority: item.priority,
@@ -294,6 +295,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (updates.status !== undefined) payload.status = updates.status;
         if (updates.priority !== undefined) payload.priority = updates.priority;
         if (updates.progress !== undefined) payload.progress = updates.progress;
+        if (updates.workspace !== undefined) payload.workspace = updates.workspace;
+        if (updates.subtasks !== undefined) payload.subtasks = updates.subtasks;
+        if (updates.milestones !== undefined) payload.milestones = updates.milestones;
+        if (updates.blockers !== undefined) payload.blockers = updates.blockers;
+        if (updates.nextAction !== undefined) payload.nextAction = updates.nextAction;
         if ("dueDate" in updates) payload.dueDate = updates.dueDate ?? null;
         if ("previousStatus" in updates) payload.previousStatus = updates.previousStatus ?? null;
         pendingUpdatePayloads.set(id, payload);

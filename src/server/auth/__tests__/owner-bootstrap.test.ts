@@ -4,6 +4,7 @@ import {
   timingSafeCompare,
   validateOwnerRegistration
 } from "../owner-bootstrap";
+import { bootstrapOwnerAction } from "@/server/actions/bootstrap";
 
 describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
   const validConfig = {
@@ -168,7 +169,6 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
         delete process.env.OWNER_EMAIL;
         process.env.OWNER_BOOTSTRAP_TOKEN = "valid-token";
 
-        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
         const res = await bootstrapOwnerAction({
           email: "owner@dashy.local",
           password: "password12345",
@@ -192,7 +192,6 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
         process.env.OWNER_EMAIL = "owner@dashy.local";
         delete process.env.OWNER_BOOTSTRAP_TOKEN;
 
-        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
         const res = await bootstrapOwnerAction({
           email: "owner@dashy.local",
           password: "password12345",
@@ -216,7 +215,6 @@ describe("Single-Owner Bootstrap & Registration Security Guardrails", () => {
         process.env.OWNER_EMAIL = "owner@dashy.local";
         process.env.OWNER_BOOTSTRAP_TOKEN = "valid-token";
 
-        const { bootstrapOwnerAction } = await import("@/server/actions/bootstrap");
         const res = await bootstrapOwnerAction({
           email: "owner@dashy.local",
           password: "short",

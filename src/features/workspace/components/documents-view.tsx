@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Download,
+  ExternalLink,
   FileCheck,
   FileCode,
   FileSpreadsheet,
@@ -13,31 +14,17 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
+import {
+  createDocument,
+  deleteDocument as deleteDocumentAction,
+  listDocuments,
+  type DocumentCategory,
+  type DocumentRecordItem
+} from "@/server/actions/documents";
 import { useWorkspaceStore } from "../store";
 import type { WorkspaceSlug } from "../types";
 import { WORKSPACE_OPTIONS } from "./dashy-workspace";
 import { cn } from "@/shared/lib/utils";
-
-export type DocumentCategory =
-  | "PROPOSAL"
-  | "AGREEMENT"
-  | "INVOICE"
-  | "REQUIREMENT"
-  | "TEMPLATE"
-  | "OTHER";
-
-export interface DocumentRecordItem {
-  id: string;
-  workspaceId: WorkspaceSlug;
-  title: string;
-  category: DocumentCategory;
-  fileUrl?: string;
-  fileKey?: string;
-  mimeType?: string;
-  sizeKb?: number;
-  content?: string;
-  createdAt: string;
-}
 
 const CATEGORIES: { key: DocumentCategory; label: string; icon: LucideIcon; color: string }[] = [
   { key: "PROPOSAL", label: "Proposals", icon: FileText, color: "text-blue-500" },
@@ -52,48 +39,8 @@ export function DocumentsView() {
   const store = useWorkspaceStore();
   const currentWs = store.activeWorkspace;
 
-  const [documents, setDocuments] = useState<DocumentRecordItem[]>([
-    {
-      id: "doc_1",
-      workspaceId: "freelance-software",
-      title: "Master Software Development Agreement Template",
-      category: "AGREEMENT",
-      mimeType: "application/pdf",
-      sizeKb: 142,
-      content: "Standard IP transfer, payment milestones (40/30/30), confidentiality, and limitation of liability clauses.",
-      createdAt: "2026-10-01"
-    },
-    {
-      id: "doc_2",
-      workspaceId: "freelance-software",
-      title: "Technical Architecture & Security Scope: Apex Retail",
-      category: "REQUIREMENT",
-      mimeType: "text/markdown",
-      sizeKb: 48,
-      content: "Complete database ERD, RBAC permissions, and API rate limiting specification.",
-      createdAt: "2026-10-12"
-    },
-    {
-      id: "doc_3",
-      workspaceId: "dkom",
-      title: "DKOM Mithila Art Copyright & Authenticity Certificate",
-      category: "TEMPLATE",
-      mimeType: "application/pdf",
-      sizeKb: 210,
-      content: "Official signed certificate of authenticity accompanying each original Madhubani canvas and hand-painted silk kurta.",
-      createdAt: "2026-10-06"
-    },
-    {
-      id: "doc_4",
-      workspaceId: "mithila-kritikala",
-      title: "Mithila KritiKala Society Registration Deed & Bylaws",
-      category: "AGREEMENT",
-      mimeType: "application/pdf",
-      sizeKb: 520,
-      content: "Formal NGO registration certificates, trustee charter, and annual artisan training scheme.",
-      createdAt: "2026-09-15"
-    }
-  ]);
+  const [documents, setDocuments] = useState<DocumentRecordItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | "ALL">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,7 +50,38 @@ export function DocumentsView() {
   const [docTitle, setDocTitle] = useState("");
   const [docCategory, setDocCategory] = useState<DocumentCategory>("PROPOSAL");
   const [docWs, setDocWs] = useState<WorkspaceSlug>(currentWs === "unified" ? "freelance-software" : currentWs);
+  const [docFileUrl, setDocFileUrl] = useState("");
   const [docContent, setDocContent] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    listDocuments(currentWs)
+      .then((data) => {
+        if (active) {
+          setDocuments(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to load documents:", err);
+          toast.error("Could not load documents from database");
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentWs]);
+
+  useEffect(() => {
+    if (currentWs !== "unified") {
+      setDocWs(currentWs);
+    }
+  }, [currentWs]);
 
   const filteredDocs = useMemo(() => {
     return documents
@@ -115,35 +93,63 @@ export function DocumentsView() {
       .filter((d) => {
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
-        return d.title.toLowerCase().includes(q) || (d.content && d.content.toLowerCase().includes(q));
+        return (
+          d.title.toLowerCase().includes(q) ||
+          (d.content && d.content.toLowerCase().includes(q)) ||
+          (d.fileUrl && d.fileUrl.toLowerCase().includes(q))
+        );
       });
   }, [documents, currentWs, selectedCategory, searchQuery]);
 
-  const handleAddDocument = (e: React.FormEvent) => {
+  const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docTitle.trim()) {
       toast.error("Please enter a document title");
       return;
     }
-    const newDoc: DocumentRecordItem = {
-      id: `doc_${Date.now()}`,
-      workspaceId: docWs,
-      title: docTitle.trim(),
-      category: docCategory,
-      sizeKb: Math.floor(20 + Math.random() * 200),
-      content: docContent.trim() || undefined,
-      createdAt: new Date().toISOString().slice(0, 10)
-    };
-    setDocuments([newDoc, ...documents]);
-    setShowAddModal(false);
-    setDocTitle("");
-    setDocContent("");
-    toast.success(`Document record "${newDoc.title}" created`);
+
+    setIsSubmitting(true);
+    try {
+      const contentBytes = docContent.trim() ? new TextEncoder().encode(docContent).length : 0;
+      const computedSizeKb = contentBytes > 0 ? Math.max(1, Math.round(contentBytes / 1024)) : 0;
+
+      const created = await createDocument({
+        workspace: docWs,
+        title: docTitle.trim(),
+        category: docCategory,
+        content: docContent.trim() || undefined,
+        fileUrl: docFileUrl.trim() || undefined,
+        sizeKb: computedSizeKb
+      });
+
+      setDocuments((prev) => [created, ...prev]);
+      setShowAddModal(false);
+      setDocTitle("");
+      setDocFileUrl("");
+      setDocContent("");
+      toast.success(`Document record "${created.title}" saved to database`);
+    } catch (err) {
+      console.error("Create document error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to create document");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDeleteDoc = (id: string) => {
+  const handleDeleteDoc = async (id: string, title: string) => {
+    if (!confirm(`Delete document record "${title}"?`)) return;
+
+    const previous = documents;
     setDocuments((prev) => prev.filter((d) => d.id !== id));
-    toast.info("Document record deleted");
+
+    try {
+      await deleteDocumentAction(id);
+      toast.info("Document deleted from database");
+    } catch (err) {
+      console.error("Delete doc error:", err);
+      setDocuments(previous);
+      toast.error("Failed to delete document");
+    }
   };
 
   return (
@@ -154,12 +160,28 @@ export function DocumentsView() {
         <div>
           <p className="eyebrow">Records & Contracts / Document Repository</p>
           <h1>Documents & Agreements</h1>
-          <p>Centralized storage for proposals, client agreements, scope documents, and authenticity certificates.</p>
+          <p>Database-backed repository for proposals, client agreements, scope documents, and authenticity certificates.</p>
         </div>
         <button className="primary-button" onClick={() => setShowAddModal(true)}>
           <Plus /> New Document
         </button>
       </section>
+
+      {/* Scope Disclaimer */}
+      <div
+        style={{
+          background: "rgb(var(--surface-strong))",
+          border: "1px solid rgb(var(--border))",
+          borderRadius: "var(--radius)",
+          padding: "0.6rem 0.9rem",
+          marginBottom: "1.2rem",
+          fontSize: "0.76rem",
+          color: "rgb(var(--muted))",
+          lineHeight: 1.4
+        }}
+      >
+        <strong>Document Repository Scope:</strong> Dashy records document metadata, markdown scopes/clauses, and external document links (e.g. Google Docs, Figma, Notion). Cloud binary file storage (S3/R2) is not connected in this MVP.
+      </div>
 
       {/* Filter and Search Bar */}
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1.5rem" }}>
@@ -195,58 +217,110 @@ export function DocumentsView() {
       </div>
 
       {/* Document Grid */}
-      <div className="item-grid">
-        {filteredDocs.map((doc) => {
-          const ws = WORKSPACE_OPTIONS.find((w) => w.slug === doc.workspaceId);
-          const catInfo = CATEGORIES.find((c) => c.key === doc.category) || CATEGORIES[0];
-          const Icon = catInfo.icon;
-          return (
-            <div key={doc.id} className="item-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <Icon style={{ width: "1.2rem", height: "1.2rem", color: "rgb(var(--accent))" }} />
-                    <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "999px", background: "rgb(var(--surface-strong))", color: "rgb(var(--accent))" }}>
-                      {catInfo.label}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    {ws ? (
-                      <span className={cn("workspace-pill-badge", ws.dot)} style={{ fontSize: "0.55rem" }}>
-                        {ws.label.split(" ")[0]}
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "rgb(var(--muted))" }}>
+          Loading document repository from database...
+        </div>
+      ) : (
+        <div className="item-grid">
+          {filteredDocs.map((doc) => {
+            const ws = WORKSPACE_OPTIONS.find((w) => w.slug === doc.workspaceId);
+            const catInfo = CATEGORIES.find((c) => c.key === doc.category) || CATEGORIES[0];
+            const Icon = catInfo.icon;
+            const docKind = doc.fileUrl ? "External Link" : doc.content ? "Markdown Spec" : "Metadata Record";
+
+            return (
+              <div key={doc.id} className="item-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                      <Icon style={{ width: "1.2rem", height: "1.2rem", color: "rgb(var(--accent))" }} />
+                      <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "999px", background: "rgb(var(--surface-strong))", color: "rgb(var(--accent))" }}>
+                        {catInfo.label}
                       </span>
-                    ) : null}
-                    <button type="button" className="icon-button" onClick={() => handleDeleteDoc(doc.id)}>
-                      <Trash2 style={{ width: "0.9rem", height: "0.9rem" }} />
-                    </button>
+                      <span style={{ fontSize: "0.62rem", padding: "0.1rem 0.4rem", borderRadius: "var(--radius-sm)", border: "1px solid rgb(var(--border))", color: "rgb(var(--muted))" }}>
+                        {docKind}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      {ws ? (
+                        <span className={cn("workspace-pill-badge", ws.dot)} style={{ fontSize: "0.55rem" }}>
+                          {ws.label.split(" ")[0]}
+                        </span>
+                      ) : null}
+                      <button type="button" className="icon-button" onClick={() => handleDeleteDoc(doc.id, doc.title)} title="Delete record">
+                        <Trash2 style={{ width: "0.9rem", height: "0.9rem" }} />
+                      </button>
+                    </div>
                   </div>
+
+                  <strong style={{ fontSize: "0.92rem", display: "block", marginBottom: "0.4rem" }}>
+                    {doc.title}
+                  </strong>
+
+                  {doc.content ? (
+                    <p style={{ fontSize: "0.78rem", color: "rgb(var(--muted))", lineHeight: 1.5, margin: "0.4rem 0" }}>
+                      {doc.content}
+                    </p>
+                  ) : null}
+
+                  {doc.fileUrl ? (
+                    <div style={{ margin: "0.4rem 0", fontSize: "0.72rem", color: "rgb(var(--accent))", wordBreak: "break-all" }}>
+                      🔗 {doc.fileUrl}
+                    </div>
+                  ) : null}
                 </div>
 
-                <h3 style={{ fontSize: "0.95rem", fontWeight: 700, margin: "0.4rem 0" }}>{doc.title}</h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgb(var(--border))", paddingTop: "0.6rem", marginTop: "0.8rem", fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
+                  <span>{doc.fileUrl ? "Linked doc" : `${doc.sizeKb} KB`} · {doc.createdAt}</span>
+                  <div style={{ display: "flex", gap: "0.3rem" }}>
+                    {doc.fileUrl ? (
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="secondary-button"
+                        style={{ padding: "0.2rem 0.5rem", fontSize: "0.68rem", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                      >
+                        <ExternalLink style={{ width: "0.75rem", height: "0.75rem" }} /> Open Link
+                      </a>
+                    ) : null}
 
-                {doc.content ? (
-                  <p style={{ fontSize: "0.76rem", color: "rgb(var(--muted))", lineHeight: 1.5, margin: "0.4rem 0" }}>
-                    {doc.content}
-                  </p>
-                ) : null}
+                    {doc.content ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{ padding: "0.2rem 0.5rem", fontSize: "0.68rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                        onClick={() => {
+                          const blob = new Blob(
+                            [`# ${doc.title}\n\nCategory: ${doc.category}\nDate: ${doc.createdAt}\n\n${doc.content}`],
+                            { type: "text/markdown" }
+                          );
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${doc.title.toLowerCase().replace(/[^a-z0-9]/g, "-")}.md`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          toast.success(`Exported ${doc.title}.md`);
+                        }}
+                      >
+                        <Download style={{ width: "0.75rem", height: "0.75rem" }} /> Export .md
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
+            );
+          })}
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgb(var(--border))", paddingTop: "0.6rem", marginTop: "0.8rem", fontSize: "0.7rem", color: "rgb(var(--muted))" }}>
-                <span>{doc.sizeKb} KB · {doc.createdAt}</span>
-                <span style={{ color: "rgb(var(--accent))", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer" }} onClick={() => toast.success("Document downloaded")}>
-                  <Download style={{ width: "0.8rem", height: "0.8rem" }} /> Download
-                </span>
-              </div>
+          {filteredDocs.length === 0 ? (
+            <div style={{ padding: "2rem", textAlign: "center", color: "rgb(var(--muted))", gridColumn: "1 / -1" }}>
+              No document records found.
             </div>
-          );
-        })}
-
-        {filteredDocs.length === 0 ? (
-          <div style={{ gridColumn: "1 / -1", padding: "3rem", textAlign: "center", color: "rgb(var(--muted))" }}>
-            No documents found matching this filter.
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Add Document Modal */}
       {showAddModal ? (
@@ -255,14 +329,14 @@ export function DocumentsView() {
             <div className="drawer-head">
               <div>
                 <p className="eyebrow">Repository</p>
-                <h2>Add Document Record</h2>
+                <h2>New Document Record</h2>
               </div>
               <button className="icon-button" onClick={() => setShowAddModal(false)}>×</button>
             </div>
             <form onSubmit={handleAddDocument} style={{ display: "grid", gap: "0.8rem", marginTop: "1rem" }}>
               <label>
-                Document Title
-                <input autoFocus placeholder="e.g. Master Services Agreement (MSA)" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} required />
+                Document Title *
+                <input autoFocus placeholder="e.g. Master Services Agreement" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} required />
               </label>
 
               <div className="form-grid">
@@ -285,12 +359,31 @@ export function DocumentsView() {
               </div>
 
               <label>
-                Document Summary / Terms
-                <textarea placeholder="e.g. Scope of deliverables, payment milestones, signed date" value={docContent} onChange={(e) => setDocContent(e.target.value)} />
+                External Document Link (Optional)
+                <input
+                  type="url"
+                  placeholder="https://docs.google.com/... or Figma / Notion URL"
+                  value={docFileUrl}
+                  onChange={(e) => setDocFileUrl(e.target.value)}
+                />
               </label>
 
-              <button className="primary-button primary-button--full" type="submit">
-                <Plus /> Create Document Record
+              <label>
+                Document Summary / Markdown Clauses
+                <textarea
+                  placeholder="e.g. Scope, key deliverables, IP clauses, payment terms..."
+                  value={docContent}
+                  onChange={(e) => setDocContent(e.target.value)}
+                  rows={4}
+                />
+              </label>
+
+              <p style={{ fontSize: "0.72rem", color: "rgb(var(--muted))", margin: 0 }}>
+                Records metadata and markdown text in PostgreSQL. Binary file uploads to cloud buckets (S3/R2) are deferred.
+              </p>
+
+              <button className="primary-button primary-button--full" type="submit" disabled={isSubmitting}>
+                <Plus /> {isSubmitting ? "Saving to database..." : "Create Document Record"}
               </button>
             </form>
           </div>

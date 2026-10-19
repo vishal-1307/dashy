@@ -32,13 +32,18 @@ function ResetPasswordForm() {
       return;
     }
     setLoading(true);
-    const { error: resetError } = await resetPassword({ newPassword: password, token });
-    setLoading(false);
-    if (resetError) {
-      setError(resetError.message ?? "Could not reset your password. The link may have expired.");
-      return;
+    try {
+      const res = await resetPassword({ newPassword: password, token });
+      if (res?.error) {
+        setError(res.error.message ?? "Could not reset your password. The link may have expired.");
+        return;
+      }
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reset your password. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setDone(true);
   };
 
   return (

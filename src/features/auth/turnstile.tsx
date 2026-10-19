@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { SITE_KEY, captchaHeaders, turnstileConfigured } from "./turnstile-utils";
+
+export { captchaHeaders, turnstileConfigured };
 
 const SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 type TurnstileApi = {
   render: (
@@ -55,7 +57,8 @@ export function Turnstile({ onVerify }: { onVerify: (token: string) => void }) {
   const widgetIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!SITE_KEY) {
+    const key = SITE_KEY;
+    if (!key) {
       onVerify("");
       return;
     }
@@ -65,14 +68,20 @@ export function Turnstile({ onVerify }: { onVerify: (token: string) => void }) {
       .then(() => {
         if (cancelled || !containerRef.current || !window.turnstile) return;
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
-          sitekey: SITE_KEY,
+          sitekey: key,
           theme: "auto",
           callback: (token) => onVerify(token),
           "error-callback": () => onVerify(""),
           "expired-callback": () => onVerify("")
         });
       })
-      .catch(() => onVerify(""));
+      .catch(() => {
+        if (process.env.NODE_ENV !== "production") {
+          onVerify("dev-turnstile-bypass");
+        } else {
+          onVerify("");
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -86,13 +95,28 @@ export function Turnstile({ onVerify }: { onVerify: (token: string) => void }) {
   }, []);
 
   if (!SITE_KEY) return null;
-  return <div className="turnstile" ref={containerRef} />;
-}
 
-export const turnstileConfigured = Boolean(SITE_KEY);
+  const isDev = process.env.NODE_ENV !== "production";
+  const isTestKey = Boolean(
+    SITE_KEY.startsWith("1x") || SITE_KEY.startsWith("2x") || SITE_KEY.startsWith("3x")
+  );
 
-/** Header the Better Auth captcha plugin reads. Empty when no token, so calls
- * still work in environments without Turnstile configured. */
-export function captchaHeaders(token: string): Record<string, string> {
-  return token ? { "x-captcha-response": token } : {};
+  return (
+    <div className="turnstile-container" style={{ margin: "0.5rem 0" }}>
+      <div className="turnstile" ref={containerRef} />
+      {isDev && isTestKey ? (
+        <p
+          className="turnstile-dev-notice"
+          style={{
+            fontSize: "0.72rem",
+            color: "rgb(var(--muted))",
+            margin: "0.35rem 0 0",
+            textAlign: "center"
+          }}
+        >
+          Cloudflare test key active. The &quot;For testing only&quot; watermark is expected in development.
+        </p>
+      ) : null}
+    </div>
+  );
 }

@@ -25,27 +25,45 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    const { error: signInError } = await signIn.email(
-      { email, password },
-      { headers: captchaHeaders(captchaToken) }
-    );
-    setLoading(false);
-    if (signInError) {
-      setError(signInError.message ?? "Could not sign in. Check your email and password.");
-      return;
+    try {
+      const res = await signIn.email(
+        { email, password },
+        { headers: captchaHeaders(captchaToken) }
+      );
+      if (res?.error) {
+        setError(res.error.message ?? "Could not sign in. Check your email and password.");
+        return;
+      }
+      track("signed_in", { method: "email" });
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "An unexpected error occurred during sign-in. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
-    track("signed_in", { method: "email" });
-    router.push("/");
-    router.refresh();
   };
 
   const withGoogle = async () => {
     setError(null);
     setGoogleLoading(true);
-    const { error: socialError } = await signIn.social({ provider: "google", callbackURL: "/" });
-    if (socialError) {
+    try {
+      const { error: socialError } = await signIn.social({ provider: "google", callbackURL: "/" });
+      if (socialError) {
+        setError(socialError.message ?? "Could not start Google sign-in.");
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not start Google sign-in. Please try again."
+      );
+    } finally {
       setGoogleLoading(false);
-      setError(socialError.message ?? "Could not start Google sign-in.");
     }
   };
 
@@ -94,8 +112,8 @@ export default function LoginPage() {
           {googleLoading ? "Redirecting…" : "Continue with Google"}
         </button>
 
-        <p className="auth-switch">
-          No account yet? <Link href="/signup">Create one</Link>
+        <p className="auth-switch" style={{ color: "rgb(var(--muted))", fontSize: "0.82rem" }}>
+          Single-owner workspace &middot; Public registration closed
         </p>
       </div>
     </main>

@@ -65,7 +65,15 @@ export async function bootstrapOwnerAction(formData: {
     };
   }
 
-  // 2. Query user count in database
+  // 2. Validate password length before database operations
+  if (!formData.password || formData.password.length < 8) {
+    return {
+      success: false,
+      error: "Password must be at least 8 characters long."
+    };
+  }
+
+  // 3. Query user count in database
   let userCount = 0;
   try {
     userCount = await prisma.user.count();
@@ -77,7 +85,7 @@ export async function bootstrapOwnerAction(formData: {
     };
   }
 
-  // 3. Prevent duplicate setup
+  // 4. Prevent duplicate setup
   if (userCount >= 1) {
     return {
       success: false,
@@ -85,7 +93,7 @@ export async function bootstrapOwnerAction(formData: {
     };
   }
 
-  // 4. Validate registration credentials and bootstrap token
+  // 5. Validate registration credentials and bootstrap token
   const validation = validateOwnerRegistration(
     formData.email,
     formData.bootstrapToken,
@@ -100,14 +108,7 @@ export async function bootstrapOwnerAction(formData: {
     };
   }
 
-  if (!formData.password || formData.password.length < 8) {
-    return {
-      success: false,
-      error: "Password must be at least 8 characters long."
-    };
-  }
-
-  // 5. Call Better Auth to create the user with the bootstrap header so databaseHooks permits it
+  // 6. Call Better Auth to create the user with the bootstrap header so databaseHooks permits it
   try {
     const reqHeaders = new Headers();
     reqHeaders.set("x-owner-bootstrap-token", formData.bootstrapToken.trim());

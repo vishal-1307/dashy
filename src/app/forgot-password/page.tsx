@@ -21,18 +21,23 @@ export default function ForgotPasswordPage() {
       return;
     }
     setLoading(true);
-    const { error: resetError } = await requestPasswordReset(
-      { email, redirectTo: "/reset-password" },
-      { headers: captchaHeaders(captchaToken) }
-    );
-    setLoading(false);
-    if (resetError) {
-      setError(resetError.message ?? "Could not send the reset email.");
-      return;
+    try {
+      const res = await requestPasswordReset(
+        { email, redirectTo: "/reset-password" },
+        { headers: captchaHeaders(captchaToken) }
+      );
+      if (res?.error) {
+        setError(res.error.message ?? "Could not send the reset email.");
+        return;
+      }
+      // Always show the same confirmation regardless of whether the email exists,
+      // so this page can't be used to enumerate registered accounts.
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send the reset email. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    // Always show the same confirmation regardless of whether the email exists,
-    // so this page can't be used to enumerate registered accounts.
-    setSent(true);
   };
 
   return (

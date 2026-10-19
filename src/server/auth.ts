@@ -12,6 +12,26 @@ const emailVerificationEnabled = process.env.EMAIL_VERIFICATION_ENABLED === "tru
 
 const appUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
+const isDev = process.env.NODE_ENV !== "production";
+const devOrigins = isDev
+  ? [
+      "http://localhost:*",
+      "http://127.0.0.1:*",
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:3002"
+    ]
+  : [];
+const configuredOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const trustedOrigins = Array.from(new Set([appUrl, ...devOrigins, ...configuredOrigins]));
+
 const turnstileSecret = process.env.TURNSTILE_SECRET_KEY;
 
 // Rate limits are keyed per-IP by Better Auth. Values are requests-per-window
@@ -132,7 +152,7 @@ export const auth = betterAuth({
     storage: "database", // persists across serverless invocations (Neon-backed)
     customRules: authRateLimitRules
   },
-  trustedOrigins: [appUrl],
+  trustedOrigins,
   plugins: [
     // Server-side captcha verification inside the auth flow. Default endpoints
     // are /sign-up/email, /sign-in/email, /request-password-reset. When no

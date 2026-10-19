@@ -13,6 +13,7 @@ import type { ThemeMode, WorkspaceExport } from "../types";
 import { cn } from "@/shared/lib/utils";
 import { resetAnalyticsIdentity } from "@/shared/lib/analytics";
 import { deleteUser, signOut, useSession } from "@/server/auth-client";
+import { exportRelationalBackupAction, restoreRelationalBackupAction } from "@/server/actions/backup";
 
 const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -47,11 +48,17 @@ export function SettingsPage() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
-    await signOut();
-    store.resetForSignOut();
-    resetAnalyticsIdentity();
-    router.push("/login");
-    router.refresh();
+    try {
+      await signOut();
+    } catch {
+      // Continue client-side session cleanup even if network request fails
+    } finally {
+      store.resetForSignOut();
+      resetAnalyticsIdentity();
+      router.push("/login");
+      router.refresh();
+      setSigningOut(false);
+    }
   };
 
   const savePasscode = async () => {
@@ -90,37 +97,46 @@ export function SettingsPage() {
     toast.success("Passcode removed");
   };
 
-  const exportData = () => {
-    const payload: WorkspaceExport = {
-      app: "dashy",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      theme: store.theme,
-      items: store.items,
-      dashboardOrder: store.dashboardOrder,
-      dashboardVisibleIds: store.dashboardVisibleIds
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `dashy-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("Backup downloaded");
+  const exportData = async () => {
+    try {
+      const backup = await exportRelationalBackupAction();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `dashy-backup-v2-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("Relational database backup downloaded (SHA-256 verified)");
+    } catch (err) {
+      console.error("Backup export error:", err);
+      toast.error("Could not export database backup");
+    }
   };
 
   const importData = async (file: File) => {
     try {
-      const parsed = workspaceExportSchema.safeParse(JSON.parse(await file.text()));
+      const text = await file.text();
+      const rawJson = JSON.parse(text);
+
+      if (rawJson && typeof rawJson === "object" && "checksum" in rawJson && rawJson.app === "dashy") {
+        // Relational v2 backup with SHA-256 integrity
+        const result = await restoreRelationalBackupAction(rawJson);
+        await store.hydrateFromServer();
+        toast.success(result.message);
+        return;
+      }
+
+      // Legacy v1 backup fallback
+      const parsed = workspaceExportSchema.safeParse(rawJson);
       if (!parsed.success) {
         toast.error("That file is not a valid Dashy backup");
         return;
       }
       store.importWorkspace(parsed.data as WorkspaceExport);
       toast.success(`Imported ${parsed.data.items.length} items`);
-    } catch {
-      toast.error("Could not read that file");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not read that file");
     }
   };
 
@@ -141,24 +157,29 @@ export function SettingsPage() {
       return;
     }
     setDeleting(true);
-    const { error: deleteError } = await deleteUser(
-      deletePassword ? { password: deletePassword } : {}
-    );
-    setDeleting(false);
-    if (deleteError) {
-      toast.error(deleteError.message ?? "Could not delete your account. Sign in again and retry.");
-      return;
-    }
-    // Server-side rows are gone (DB cascade); remove the local copy too.
-    store.resetForSignOut();
-    store.clearWorkspace();
     try {
-      window.localStorage.removeItem("dashy-workspace-v1");
-    } catch {
-      // localStorage may be unavailable; nothing sensitive remains anyway.
+      const { error: deleteError } = await deleteUser(
+        deletePassword ? { password: deletePassword } : {}
+      );
+      if (deleteError) {
+        toast.error(deleteError.message ?? "Could not delete your account. Sign in again and retry.");
+        return;
+      }
+      // Server-side rows are gone (DB cascade); remove the local copy too.
+      store.resetForSignOut();
+      store.clearWorkspace();
+      try {
+        window.localStorage.removeItem("dashy-workspace-v1");
+      } catch {
+        // localStorage may be unavailable; nothing sensitive remains anyway.
+      }
+      router.push("/signup");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete your account.");
+    } finally {
+      setDeleting(false);
     }
-    router.push("/signup");
-    router.refresh();
   };
 
   return (

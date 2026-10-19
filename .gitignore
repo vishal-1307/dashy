@@ -1,11 +1,12 @@
 node_modules
 .next
+.next_staging
+.next_build
 out
 build
 dist
-.env
-.env.local
-.env*.local
+.env*
+!.env.example
 coverage
 *.log
 *.tsbuildinfo

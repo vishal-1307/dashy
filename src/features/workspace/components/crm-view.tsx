@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Building,
@@ -8,35 +8,23 @@ import {
   Mail,
   Phone,
   Plus,
+  Trash2,
   Users
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  addClientInteraction,
+  createClient,
+  deleteClient as deleteClientAction,
+  listClients,
+  updateClientStage,
+  type ClientLead,
+  type LeadStage
+} from "@/server/actions/crm";
 import { useWorkspaceStore } from "../store";
 import type { WorkspaceSlug } from "../types";
 import { WORKSPACE_OPTIONS } from "./dashy-workspace";
 import { cn } from "@/shared/lib/utils";
-
-export type LeadStage =
-  | "LEAD"
-  | "CONTACTED"
-  | "PROPOSAL_SENT"
-  | "NEGOTIATION"
-  | "WON"
-  | "LOST";
-
-export interface ClientLead {
-  id: string;
-  workspaceId: WorkspaceSlug;
-  name: string;
-  company?: string;
-  email?: string;
-  phone?: string;
-  dealValue: number;
-  stage: LeadStage;
-  nextFollowUpAt?: string; // YYYY-MM-DD
-  notes?: string;
-  interactions: { id: string; type: string; summary: string; date: string }[];
-}
 
 const STAGES: { key: LeadStage; label: string; color: string }[] = [
   { key: "LEAD", label: "New Leads", color: "border-sky-500" },
@@ -52,53 +40,8 @@ export function CrmView() {
   const currentWs = store.activeWorkspace;
   const today = new Date().toISOString().slice(0, 10);
 
-  const [clients, setClients] = useState<ClientLead[]>([
-    {
-      id: "cli_1",
-      workspaceId: "freelance-software",
-      name: "Rohit Sharma",
-      company: "Apex Retail Solutions",
-      email: "rohit@apexretail.in",
-      phone: "+91 98765 43210",
-      dealValue: 85000,
-      stage: "NEGOTIATION",
-      nextFollowUpAt: today,
-      notes: "Requirements gathering done. Reviewing payment milestones proposal.",
-      interactions: [
-        { id: "int_1", type: "CALL", summary: "Discussed custom inventory dashboard", date: "2026-10-12" },
-        { id: "int_2", type: "EMAIL", summary: "Sent revised quotation with 3 installments", date: "2026-10-15" }
-      ]
-    },
-    {
-      id: "cli_2",
-      workspaceId: "dkom",
-      name: "Pooja Verma",
-      company: "Heritage Boutique",
-      email: "pooja@heritageboutique.com",
-      phone: "+91 91234 56789",
-      dealValue: 35000,
-      stage: "PROPOSAL_SENT",
-      nextFollowUpAt: "2026-10-22",
-      notes: "Wholesale inquiry for hand-painted Mithila jackets and dupattas.",
-      interactions: [
-        { id: "int_3", type: "WHATSAPP", summary: "Shared catalogue PDF and pricing tier", date: "2026-10-14" }
-      ]
-    },
-    {
-      id: "cli_3",
-      workspaceId: "freelance-software",
-      name: "Anil Singhal",
-      company: "Singhal Logistics",
-      email: "anil@singhallogistics.com",
-      dealValue: 120000,
-      stage: "WON",
-      notes: "Full fleet management portal build. Advance payment received.",
-      interactions: [
-        { id: "int_4", type: "MEETING", summary: "Kickoff call and agreement signed", date: "2026-10-08" }
-      ]
-    }
-  ]);
-
+  const [clients, setClients] = useState<ClientLead[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientLead | null>(null);
 
@@ -112,10 +55,43 @@ export function CrmView() {
   const [newFollowUp, setNewFollowUp] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [newWs, setNewWs] = useState<WorkspaceSlug>(currentWs === "unified" ? "freelance-software" : currentWs);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Interaction log form
   const [interactionType, setInteractionType] = useState("CALL");
   const [interactionSummary, setInteractionSummary] = useState("");
+  const [isLoggingInteraction, setIsLoggingInteraction] = useState(false);
+
+  // Fetch real data from database on mount & workspace change
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    listClients(currentWs)
+      .then((data) => {
+        if (active) {
+          setClients(data);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to load clients:", err);
+          toast.error("Could not load CRM clients from database");
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentWs]);
+
+  // Keep newWs synced with currentWs if currentWs changes
+  useEffect(() => {
+    if (currentWs !== "unified") {
+      setNewWs(currentWs);
+    }
+  }, [currentWs]);
 
   const filteredClients = useMemo(() => {
     if (currentWs === "unified") return clients;
@@ -135,60 +111,118 @@ export function CrmView() {
     );
   }, [filteredClients, today]);
 
-  const handleAddClient = (e: React.FormEvent) => {
+  const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) {
       toast.error("Please enter client contact name");
       return;
     }
-    const lead: ClientLead = {
-      id: `cli_${Date.now()}`,
-      workspaceId: newWs,
-      name: newName.trim(),
-      company: newCompany.trim() || undefined,
-      email: newEmail.trim() || undefined,
-      phone: newPhone.trim() || undefined,
-      dealValue: parseFloat(newDealValue) || 0,
-      stage: newStage,
-      nextFollowUpAt: newFollowUp || undefined,
-      notes: newNotes.trim() || undefined,
-      interactions: []
-    };
-    setClients([lead, ...clients]);
-    setShowAddModal(false);
-    setNewName("");
-    setNewCompany("");
-    setNewEmail("");
-    setNewPhone("");
-    setNewDealValue("");
-    setNewNotes("");
-    toast.success(`Client ${lead.name} added to pipeline`);
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        workspace: newWs,
+        name: newName.trim(),
+        company: newCompany.trim() || undefined,
+        email: newEmail.trim() || undefined,
+        phone: newPhone.trim() || undefined,
+        dealValue: parseFloat(newDealValue) || 0,
+        stage: newStage,
+        nextFollowUpAt: newFollowUp || undefined,
+        notes: newNotes.trim() || undefined
+      };
+
+      const created = await createClient(payload);
+      setClients((prev) => [created, ...prev]);
+      setShowAddModal(false);
+      setNewName("");
+      setNewCompany("");
+      setNewEmail("");
+      setNewPhone("");
+      setNewDealValue("");
+      setNewNotes("");
+      toast.success(`Client ${created.name} saved to database`);
+    } catch (err) {
+      console.error("Create client error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to create client");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleUpdateStage = (clientId: string, nextStage: LeadStage) => {
+  const handleUpdateStage = async (clientId: string, nextStage: LeadStage) => {
+    const previous = clients.find((c) => c.id === clientId);
+    if (!previous || previous.stage === nextStage) return;
+
+    // Optimistic update
     setClients((prev) =>
       prev.map((c) => (c.id === clientId ? { ...c, stage: nextStage } : c))
     );
-    toast.info(`Moved to ${nextStage}`);
+    if (selectedClient && selectedClient.id === clientId) {
+      setSelectedClient({ ...selectedClient, stage: nextStage });
+    }
+
+    try {
+      await updateClientStage(clientId, nextStage);
+      toast.info(`Moved to ${nextStage}`);
+    } catch (err) {
+      console.error("Stage update error:", err);
+      // Rollback
+      setClients((prev) =>
+        prev.map((c) => (c.id === clientId ? previous : c))
+      );
+      if (selectedClient && selectedClient.id === clientId) {
+        setSelectedClient(previous);
+      }
+      toast.error("Failed to update client stage in database");
+    }
   };
 
-  const handleAddInteraction = (e: React.FormEvent) => {
+  const handleDeleteClient = async (clientId: string, clientName: string) => {
+    if (!confirm(`Are you sure you want to delete ${clientName}?`)) return;
+
+    const previous = clients;
+    setClients((prev) => prev.filter((c) => c.id !== clientId));
+    if (selectedClient?.id === clientId) {
+      setSelectedClient(null);
+    }
+
+    try {
+      await deleteClientAction(clientId);
+      toast.success(`Deleted ${clientName}`);
+    } catch (err) {
+      console.error("Delete client error:", err);
+      setClients(previous);
+      toast.error("Failed to delete client");
+    }
+  };
+
+  const handleAddInteraction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClient || !interactionSummary.trim()) return;
-    const newInt = {
-      id: `int_${Date.now()}`,
-      type: interactionType,
-      summary: interactionSummary.trim(),
-      date: today
-    };
-    const updated = {
-      ...selectedClient,
-      interactions: [newInt, ...selectedClient.interactions]
-    };
-    setClients((prev) => prev.map((c) => (c.id === selectedClient.id ? updated : c)));
-    setSelectedClient(updated);
-    setInteractionSummary("");
-    toast.success("Interaction logged");
+
+    setIsLoggingInteraction(true);
+    try {
+      const newInt = await addClientInteraction(selectedClient.id, {
+        type: interactionType,
+        summary: interactionSummary.trim()
+      });
+
+      const updated = {
+        ...selectedClient,
+        interactions: [newInt, ...selectedClient.interactions]
+      };
+
+      setClients((prev) => prev.map((c) => (c.id === selectedClient.id ? updated : c)));
+      setSelectedClient(updated);
+      setInteractionSummary("");
+      toast.success("Interaction logged to database");
+    } catch (err) {
+      console.error("Add interaction error:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to log interaction");
+    } finally {
+      setIsLoggingInteraction(false);
+    }
   };
 
   return (
@@ -199,7 +233,7 @@ export function CrmView() {
         <div>
           <p className="eyebrow">Client Relationship Management / Pipeline</p>
           <h1>Client CRM</h1>
-          <p>Lead tracking, stage progression, deal values, and scheduled follow-up alerts.</p>
+          <p>Database-backed lead tracking, deal values, interaction history, and scheduled follow-ups.</p>
         </div>
         <button className="primary-button" onClick={() => setShowAddModal(true)}>
           <Plus /> New Lead
@@ -256,92 +290,99 @@ export function CrmView() {
         </div>
       ) : null}
 
-      {/* Pipeline Kanban */}
-      <div className="kanban-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-        {STAGES.map((col) => {
-          const colClients = filteredClients.filter((c) => c.stage === col.key);
-          const colValue = colClients.reduce((sum, c) => sum + (c.dealValue || 0), 0);
-          return (
-            <div key={col.key} className="kanban-col" style={{ minHeight: "22rem" }}>
-              <div className="kanban-col__head" style={{ borderBottomColor: "rgb(var(--border))" }}>
-                <div>
-                  <h3 style={{ fontSize: "0.84rem" }}>{col.label}</h3>
-                  <small style={{ fontSize: "0.68rem", color: "rgb(var(--muted))" }}>₹{colValue.toLocaleString("en-IN")}</small>
-                </div>
-                <span className="kanban-col__count">{colClients.length}</span>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                {colClients.map((client) => {
-                  const ws = WORKSPACE_OPTIONS.find((w) => w.slug === client.workspaceId);
-                  const isFollowUpDue = client.nextFollowUpAt && client.nextFollowUpAt <= today;
-                  return (
-                    <div
-                      key={client.id}
-                      className="item-card"
-                      style={{ padding: "0.85rem", cursor: "pointer" }}
-                      onClick={() => setSelectedClient(client)}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.3rem" }}>
-                        <strong style={{ fontSize: "0.88rem" }}>{client.name}</strong>
-                        {ws ? (
-                          <span className={cn("workspace-pill-badge", ws.dot)} style={{ fontSize: "0.58rem" }}>
-                            {ws.label.split(" ")[0]}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {client.company ? (
-                        <p style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", display: "flex", alignItems: "center", gap: "0.3rem", margin: "0.2rem 0" }}>
-                          <Building style={{ width: "0.75rem", height: "0.75rem" }} /> {client.company}
-                        </p>
-                      ) : null}
-
-                      <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "rgb(var(--accent))", margin: "0.3rem 0" }}>
-                        ₹{client.dealValue.toLocaleString("en-IN")}
-                      </div>
-
-                      {client.nextFollowUpAt ? (
-                        <div
-                          style={{
-                            fontSize: "0.68rem",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.25rem",
-                            color: isFollowUpDue ? "rgb(var(--danger))" : "rgb(var(--muted))",
-                            fontWeight: isFollowUpDue ? 700 : 500
-                          }}
-                        >
-                          <Calendar style={{ width: "0.7rem", height: "0.7rem" }} />
-                          Follow-up: {client.nextFollowUpAt}
-                        </div>
-                      ) : null}
-
-                      <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.25rem" }} onClick={(e) => e.stopPropagation()}>
-                        <select
-                          value={client.stage}
-                          onChange={(e) => handleUpdateStage(client.id, e.target.value as LeadStage)}
-                          style={{ fontSize: "0.68rem", padding: "0.2rem 0.4rem", width: "100%", background: "rgb(var(--surface-strong))", border: "1px solid rgb(var(--border))", borderRadius: "var(--radius-sm)" }}
-                        >
-                          {STAGES.map((s) => (
-                            <option key={s.key} value={s.key}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {colClients.length === 0 ? (
-                  <div style={{ padding: "1.2rem", textAlign: "center", color: "rgb(var(--muted))", fontSize: "0.72rem" }}>
-                    No leads
+      {/* Loading state indicator */}
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "rgb(var(--muted))" }}>
+          Loading CRM pipeline from database...
+        </div>
+      ) : (
+        /* Pipeline Kanban */
+        <div className="kanban-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          {STAGES.map((col) => {
+            const colClients = filteredClients.filter((c) => c.stage === col.key);
+            const colValue = colClients.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+            return (
+              <div key={col.key} className="kanban-col" style={{ minHeight: "22rem" }}>
+                <div className="kanban-col__head" style={{ borderBottomColor: "rgb(var(--border))" }}>
+                  <div>
+                    <h3 style={{ fontSize: "0.84rem" }}>{col.label}</h3>
+                    <small style={{ fontSize: "0.68rem", color: "rgb(var(--muted))" }}>₹{colValue.toLocaleString("en-IN")}</small>
                   </div>
-                ) : null}
+                  <span className="kanban-col__count">{colClients.length}</span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  {colClients.map((client) => {
+                    const ws = WORKSPACE_OPTIONS.find((w) => w.slug === client.workspaceId);
+                    const isFollowUpDue = client.nextFollowUpAt && client.nextFollowUpAt <= today;
+                    return (
+                      <div
+                        key={client.id}
+                        className="item-card"
+                        style={{ padding: "0.85rem", cursor: "pointer" }}
+                        onClick={() => setSelectedClient(client)}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.3rem" }}>
+                          <strong style={{ fontSize: "0.88rem" }}>{client.name}</strong>
+                          {ws ? (
+                            <span className={cn("workspace-pill-badge", ws.dot)} style={{ fontSize: "0.58rem" }}>
+                              {ws.label.split(" ")[0]}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {client.company ? (
+                          <p style={{ fontSize: "0.74rem", color: "rgb(var(--muted))", display: "flex", alignItems: "center", gap: "0.3rem", margin: "0.2rem 0" }}>
+                            <Building style={{ width: "0.75rem", height: "0.75rem" }} /> {client.company}
+                          </p>
+                        ) : null}
+
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "rgb(var(--accent))", margin: "0.3rem 0" }}>
+                          ₹{client.dealValue.toLocaleString("en-IN")}
+                        </div>
+
+                        {client.nextFollowUpAt ? (
+                          <div
+                            style={{
+                              fontSize: "0.68rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: isFollowUpDue ? "rgb(var(--danger))" : "rgb(var(--muted))",
+                              fontWeight: isFollowUpDue ? 700 : 500
+                            }}
+                          >
+                            <Calendar style={{ width: "0.7rem", height: "0.7rem" }} />
+                            Follow-up: {client.nextFollowUpAt}
+                          </div>
+                        ) : null}
+
+                        <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.25rem", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={client.stage}
+                            onChange={(e) => handleUpdateStage(client.id, e.target.value as LeadStage)}
+                            style={{ fontSize: "0.68rem", padding: "0.2rem 0.4rem", width: "100%", background: "rgb(var(--surface-strong))", border: "1px solid rgb(var(--border))", borderRadius: "var(--radius-sm)" }}
+                          >
+                            {STAGES.map((s) => (
+                              <option key={s.key} value={s.key}>{s.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {colClients.length === 0 ? (
+                    <div style={{ padding: "1.2rem", textAlign: "center", color: "rgb(var(--muted))", fontSize: "0.72rem" }}>
+                      No leads
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add Client Modal */}
       {showAddModal ? (
@@ -357,7 +398,7 @@ export function CrmView() {
             <form onSubmit={handleAddClient} style={{ display: "grid", gap: "0.8rem", marginTop: "1rem" }}>
               <div className="form-grid">
                 <label>
-                  Contact Name
+                  Contact Name *
                   <input autoFocus placeholder="e.g. Vikas Sharma" value={newName} onChange={(e) => setNewName(e.target.value)} required />
                 </label>
                 <label>
@@ -412,8 +453,8 @@ export function CrmView() {
                 <textarea placeholder="e.g. Needs e-commerce catalog, payment gateway, timeline 3 weeks" value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
               </label>
 
-              <button className="primary-button primary-button--full" type="submit">
-                <Plus /> Create Client Lead
+              <button className="primary-button primary-button--full" type="submit" disabled={isSubmitting}>
+                <Plus /> {isSubmitting ? "Saving to database..." : "Create Client Lead"}
               </button>
             </form>
           </div>
@@ -430,7 +471,17 @@ export function CrmView() {
                 <h2>{selectedClient.name}</h2>
                 <small style={{ color: "rgb(var(--muted))" }}>{selectedClient.company || "Individual Client"}</small>
               </div>
-              <button className="icon-button" onClick={() => setSelectedClient(null)}>×</button>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  className="icon-button"
+                  title="Delete Client"
+                  onClick={() => handleDeleteClient(selectedClient.id, selectedClient.name)}
+                  style={{ color: "rgb(var(--danger))" }}
+                >
+                  <Trash2 style={{ width: "1rem", height: "1rem" }} />
+                </button>
+                <button className="icon-button" onClick={() => setSelectedClient(null)}>×</button>
+              </div>
             </div>
 
             <div style={{ marginTop: "1rem", display: "grid", gap: "0.8rem" }}>
@@ -477,8 +528,8 @@ export function CrmView() {
                     onChange={(e) => setInteractionSummary(e.target.value)}
                     style={{ flex: 1, fontSize: "0.74rem", padding: "0.3rem 0.5rem", borderRadius: "var(--radius-sm)", border: "1px solid rgb(var(--border))" }}
                   />
-                  <button type="submit" className="primary-button" style={{ padding: "0.25rem 0.6rem", fontSize: "0.72rem" }}>
-                    Log
+                  <button type="submit" className="primary-button" style={{ padding: "0.25rem 0.6rem", fontSize: "0.72rem" }} disabled={isLoggingInteraction}>
+                    {isLoggingInteraction ? "..." : "Log"}
                   </button>
                 </form>
 

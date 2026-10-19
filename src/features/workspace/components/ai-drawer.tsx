@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "../store";
-import { createConfirmationTokenAction, verifyConfirmationTokenAction } from "@/server/actions/ai-actions";
+import { sendAiMessageAction, verifyConfirmationTokenAction } from "@/server/actions/ai-actions";
+import { deleteTask } from "@/server/actions/tasks";
 import type { AiChatMessage, AiConfirmationTokenData, AiProviderName, AiToolCall } from "@/server/ai/types";
 import { cn } from "@/shared/lib/utils";
 
@@ -74,44 +75,16 @@ Ask me for a morning briefing, to check your ₹10L goal progress, or to plan ne
     setLoading(true);
 
     try {
-      // Analyze user prompt against Dashy data
-      const lower = text.toLowerCase();
-      let reply = "";
-      let simulatedToolCall: AiToolCall | null = null;
+      const result = await sendAiMessageAction(text.trim(), provider, currentWs, messages);
 
-      if (lower.includes("briefing") || lower.includes("today") || lower.includes("summary")) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const overdue = store.items.filter((i) => i.dueDate && i.dueDate < todayStr && i.status !== "done").length;
-        const active = store.items.filter((i) => i.status === "active").length;
-        reply = `**Morning Briefing (${todayStr})**:\n- **Active Work**: ${active} ongoing tasks across your workspace.\n- **Overdue Attention**: ${overdue} items past their due dates.\n- **Workspaces Active**: Freelance & Software, DKOM, Diamond Jewellers, Mithila KritiKala, Personal.\n\nWould you like me to reschedule overdue tasks or review pending client follow-ups?`;
-      } else if (lower.includes("goal") || lower.includes("10l") || lower.includes("revenue") || lower.includes("profit")) {
-        reply = `**Financial Milestone Status (₹10,00,000 Target)**:\n- **Collected Revenue**: ₹60,000 received across active projects.\n- **Outstanding Invoices**: ₹40,000 awaiting payment.\n- **Calculated Net Profit**: ₹55,500 after deducting materials & expenses.\n- **Target Achievement**: 6% achieved towards ₹10,00,000 goal.`;
-      } else if (lower.includes("delete") && lower.includes("task")) {
-        // Consequential action demo
-        const toolArgs = { taskId: "task_sample_1", title: "Review sample invoice" };
-        const token = await createConfirmationTokenAction("deleteTask", toolArgs);
-        simulatedToolCall = {
-          id: `call_${Date.now()}`,
-          name: "deleteTask",
-          arguments: toolArgs,
-          requiresConfirmation: true,
-          confirmationTokenId: token.id
-        };
-        setActiveConfirmation({ token, toolCall: simulatedToolCall });
-        reply = `I have staged a request to permanently delete task "${toolArgs.title}". Because this is a destructive action, please review and confirm the action below.`;
-      } else {
-        reply = `Grounded Workspace Query (${provider.toUpperCase()}):\nI have reviewed your active ${currentWs === "unified" ? "unified workspace" : currentWs} records. All records remain safely backed and synchronized. You can ask me to track a new project milestone, draft an invoice, or review your daily agenda.`;
+      if (result.token && result.message.toolCalls && result.message.toolCalls.length > 0) {
+        setActiveConfirmation({
+          token: result.token,
+          toolCall: result.message.toolCalls[0]
+        });
       }
 
-      const assistantMsg: AiChatMessage = {
-        id: `msg_${Date.now() + 1}`,
-        role: "assistant",
-        content: reply,
-        toolCalls: simulatedToolCall ? [simulatedToolCall] : undefined,
-        createdAt: new Date().toISOString()
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) => [...prev, result.message]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "AI completion failed");
     } finally {
@@ -129,9 +102,16 @@ Ask me for a morning briefing, to check your ₹10L goal progress, or to plan ne
         return;
       }
 
+      // Execute database action
+      if (toolCall.name === "deleteTask" && toolCall.arguments.taskId) {
+        await deleteTask(toolCall.arguments.taskId as string);
+        // Also remove from store if present
+        store.deleteItem(toolCall.arguments.taskId as string);
+      }
+
       token.usedAt = new Date();
       setActiveConfirmation(null);
-      toast.success(`Action "${toolCall.name}" confirmed and safely executed`);
+      toast.success(`Action "${toolCall.name}" confirmed and safely executed in database`);
 
       setMessages((prev) => [
         ...prev,

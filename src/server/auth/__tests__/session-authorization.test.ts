@@ -15,6 +15,17 @@ vi.mock("@/server/auth", () => ({
   }
 }));
 
+// Mock prisma for isolated authorization testing
+vi.mock("@/server/db/client", () => ({
+  prisma: {
+    aiConfirmationToken: {
+      create: vi.fn().mockImplementation(({ data }) => Promise.resolve(data)),
+      findUnique: vi.fn(),
+      update: vi.fn()
+    }
+  }
+}));
+
 import {
   requireOwnerSession,
   requireUserId,
